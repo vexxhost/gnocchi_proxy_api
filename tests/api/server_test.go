@@ -154,6 +154,18 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	if !env.prometheus.sawRangeQuery("libvirt_domain_vcpu_current") {
 		t.Fatalf("expected cpu_util query to include vcpu capacity, got %v", env.prometheus.rangeQueries())
 	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/generic/instance-a/metric/memory.usage/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected generic metric measures lookup to succeed, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two generic measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_info_memory_usage_bytes") {
+		t.Fatalf("expected generic measures lookup to resolve to instance metric definition, got %v", env.prometheus.rangeQueries())
+	}
 }
 
 func TestAPIAggregatesAndUnsupportedEndpoints(t *testing.T) {

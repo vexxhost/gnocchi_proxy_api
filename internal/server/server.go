@@ -364,11 +364,12 @@ func (s *Server) handleMetricMeasures(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResourceMetricMeasures(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.metricByResourceAndName(r.Context(), authContext(r), chi.URLParam(r, "resourceType"), chi.URLParam(r, "resourceID"), chi.URLParam(r, "metricName")); err != nil {
+	metric, err := s.metricByResourceAndName(r.Context(), authContext(r), chi.URLParam(r, "resourceType"), chi.URLParam(r, "resourceID"), chi.URLParam(r, "metricName"))
+	if err != nil {
 		s.writeErr(w, err)
 		return
 	}
-	measures, err := s.queryMeasures(r.Context(), chi.URLParam(r, "resourceType"), chi.URLParam(r, "resourceID"), chi.URLParam(r, "metricName"), r)
+	measures, err := s.queryMeasures(r.Context(), metric.ResourceType, metric.ResourceID, metric.Name, r)
 	if err != nil {
 		s.writeErr(w, err)
 		return
