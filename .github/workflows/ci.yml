@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        run: go build ./cmd/gnocchi-proxy-api
+
+      - name: Lint Helm chart
+        run: helm lint charts/gnocchi-proxy-api
+
+      - name: Render Helm chart
+        run: helm template gnocchi-proxy-api charts/gnocchi-proxy-api
+
+      - name: Build image
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/gnocchi-proxy-api:ci .
