@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/example/gnocchi-proxy-api
+  repository: ghcr.io/vexxhost/gnocchi-proxy-api
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -22,15 +22,22 @@ service:
   port: 8080
 
 ingress:
-  enabled: false
-  className: ""
-  annotations: {}
+  enabled: true
+  className: atmosphere
+  annotations:
+    cert-manager.io/cluster-issuer: atmosphere
+    cert-manager.io/common-name: gnocchi.example.com
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
   hosts:
-    - host: gnocchi-proxy.example.com
+    - host: gnocchi.example.com
       paths:
         - path: /
           pathType: Prefix
-  tls: []
+  tls:
+    - hosts:
+        - gnocchi.example.com
+      secretName: gnocchi-api-certs
 
 resources:
   requests:
@@ -59,9 +66,9 @@ config:
     idle_timeout: 60s
     shutdown_timeout: 10s
   keystone:
-    auth_url: "https://keystone.example.com"
-    username: "gnocchi-proxy"
-    password: "change-me"
+    auth_url: "http://keystone-api:5000"
+    username: ""
+    password: ""
     project_name: "service"
     user_domain_name: "Default"
     project_domain_name: "Default"
@@ -70,11 +77,11 @@ config:
       - "admin"
     service_token_skew: 30s
   prometheus:
-    base_url: "https://prometheus.example.com"
+    base_url: "http://kube-prometheus-stack-prometheus:9090"
     query_timeout: 30s
     headers: {}
-    libvirt_selector: 'job="libvirt-exporter"'
-    database_selector: 'job="openstack-database-exporter"'
+    libvirt_selector: 'job="monitoring/libvirt-exporter"'
+    database_selector: 'job="monitoring/openstack-database-exporter"'
   catalog:
     refresh_interval: 60s
   api:
