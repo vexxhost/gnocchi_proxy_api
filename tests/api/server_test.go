@@ -69,6 +69,15 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 		t.Fatalf("unexpected metric payload: %#v", metric)
 	}
 
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &metric)
+	if metric["name"] != "cpu_util" {
+		t.Fatalf("unexpected metric payload: %#v", metric)
+	}
+
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu.time/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=max", nil, "user-token-a")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -80,6 +89,21 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	}
 	if !env.prometheus.sawRangeQuery("max_over_time") {
 		t.Fatalf("expected Prometheus range query to use max_over_time, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("rate(libvirt_domain_info_cpu_time_seconds_total") {
+		t.Fatalf("expected cpu_util query to use cpu time rate, got %v", env.prometheus.rangeQueries())
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_vcpu_current") {
+		t.Fatalf("expected cpu_util query to include vcpu capacity, got %v", env.prometheus.rangeQueries())
 	}
 }
 

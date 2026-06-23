@@ -71,10 +71,41 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 
 | Resource type | v1 metric families | Source |
 | --- | --- | --- |
-| `instance` | `cpu.time`, `vcpus`, `memory.*`, `disk.read.bytes`, `disk.write.bytes`, `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
+| `instance` | `cpu.time`, `cpu_util` (Ceilometer-compatible), `vcpus`, `memory.*`, `disk.read.bytes`, `disk.write.bytes`, `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
 | `volume` | `volume.size`, `volume.status` | Cinder volume collector |
 | `network` | `network.present`, `network.status` plus provider/shared/external attrs | Neutron network collector |
 | `port` | `port.present`, `port.status` plus `network_id`, `device_owner`, `fixed_ips`, `mac_address` attrs | Neutron port collector |
+
+## Ceilometer/Gnocchi Compatibility Checklist
+
+This table compares the proxy metric names above with the metric names OpenStack users are likely to query through Ceilometer or Gnocchi. Use it as a checklist when deciding whether we need compatibility aliases or naming refactors.
+
+| Resource type | Proxy metric name | Ceilometer/Gnocchi query name | Supported by proxy today | Compatibility note |
+| --- | --- | --- | --- | --- |
+| `instance` | `cpu.time` | `cpu` | No | Same family, but the proxy renamed it. Add a `cpu` alias if we want stricter compatibility. |
+| `instance` | `cpu_util` | `cpu_util` | Yes | Legacy compatibility metric supported explicitly by the proxy. |
+| `instance` | `vcpus` | `vcpus` | Yes | Direct name match. |
+| `instance` | `memory.usage` | `memory.usage` | Yes | Direct name match. |
+| `instance` | `memory.maximum` | `memory` (closest match) | No | Proxy-specific name today. Consider a `memory` alias only if callers expect the allocated-memory meter. |
+| `instance` | `memory.available` | `memory.available` | Yes | Direct name match. |
+| `instance` | `memory.usable` | none | Not applicable | Proxy-only metric from libvirt exporter data. |
+| `instance` | `memory.rss` | `memory.resident` (closest match) | No | Similar signal, but not exposed under the legacy meter name. |
+| `instance` | `memory.used_percent` | none | Not applicable | Proxy-only metric. |
+| `instance` | `disk.read.bytes` | `disk.device.read.bytes` | No | Proxy collapses per-device telemetry into an instance-scoped metric. |
+| `instance` | `disk.write.bytes` | `disk.device.write.bytes` | No | Proxy collapses per-device telemetry into an instance-scoped metric. |
+| `instance` | `disk.capacity` | `disk.device.capacity` | No | Proxy collapses per-device telemetry into an instance-scoped metric. |
+| `instance` | `network.incoming.bytes` | `network.incoming.bytes` | Yes | Direct name match. |
+| `instance` | `network.outgoing.bytes` | `network.outgoing.bytes` | Yes | Direct name match. |
+| `instance` | `status` | none | Not applicable | Proxy-only status metric from Nova state data. |
+| `instance` | `local_gb` | none | Not applicable | Proxy-only capacity metric from Nova state data. |
+| `volume` | `volume.size` | `volume.size` | Yes | Direct name match. |
+| `volume` | `volume.status` | none | Not applicable | Proxy-only status metric. |
+| `network` | `network.present` | none | Not applicable | Proxy-only presence metric. |
+| `network` | `network.status` | none | Not applicable | Proxy-only status metric. |
+| `port` | `port.present` | none | Not applicable | Proxy-only presence metric. |
+| `port` | `port.status` | none | Not applicable | Proxy-only status metric. |
+
+The closest-match names in this checklist are based on the OpenStack Ceilometer measurements reference: [Measurements](https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html).
 
 ## Known Gaps
 
@@ -105,8 +136,8 @@ The service exposes:
 ### 1. Create the service user
 
 ```bash
-openstack user create --domain Default --password '<PASSWORD>' gnocchi-proxy
-openstack role add --project service --user gnocchi-proxy admin
+openstack user create --domain service --password '<PASSWORD>' gnocchi-proxy
+openstack role add --project service --user gnocchi-proxy --user-domain service admin
 ```
 
 ### 2. Create the `metric` service entry

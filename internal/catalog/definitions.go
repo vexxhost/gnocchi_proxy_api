@@ -36,6 +36,9 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetric("cpu.time", "s", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_cpu_time_seconds_total", id, selectors))
 		}),
+		buildInstanceMetric("cpu_util", "%", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, cpuUtilExpr(id, selectors, window))
+		}),
 		buildInstanceMetric("vcpus", "count", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_vcpu_current", id, selectors))
 		}),
@@ -232,6 +235,19 @@ func libvirtJoined(metric, instanceID string, selectors Selectors) string {
 	left = strings.Replace(left, `{}`, "", 1)
 	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
 	return fmt.Sprintf("sum((%s) * on(domain) group_left(instance_id) %s)", left, right)
+}
+
+func libvirtRateJoined(metric, instanceID string, selectors Selectors, window string) string {
+	left := metricSelector(metric, selectors.Libvirt, "", "")
+	left = strings.Replace(left, `{}`, "", 1)
+	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
+	return fmt.Sprintf("sum((rate(%s[%s])) * on(domain) group_left(instance_id) %s)", left, window, right)
+}
+
+func cpuUtilExpr(instanceID string, selectors Selectors, window string) string {
+	cpuTimeRate := libvirtRateJoined("libvirt_domain_info_cpu_time_seconds_total", instanceID, selectors, window)
+	vcpus := libvirtJoined("libvirt_domain_vcpu_current", instanceID, selectors)
+	return fmt.Sprintf("(100 * (%s)) / clamp_min((%s), 1)", cpuTimeRate, vcpus)
 }
 
 func MetricForResource(resourceType string, resource *gnocchi.Resource, supportedAggregations []string) map[string]*gnocchi.Metric {
