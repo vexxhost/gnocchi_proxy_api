@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gnocchi-proxy-api
+description: Read-only Gnocchi-compatible API backed by Prometheus and Keystone
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

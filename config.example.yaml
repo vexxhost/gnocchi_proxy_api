@@ -1,0 +1,44 @@
+server:
+  address: ":8080"
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+
+keystone:
+  auth_url: "https://keystone.example.com"
+  username: "gnocchi-proxy"
+  password: "change-me"
+  project_name: "service"
+  user_domain_name: "Default"
+  project_domain_name: "Default"
+  insecure_skip_verify: false
+  admin_roles:
+    - "admin"
+  service_token_skew: 30s
+
+prometheus:
+  base_url: "https://prometheus.example.com"
+  query_timeout: 30s
+  headers: {}
+  libvirt_selector: 'job="libvirt-exporter"'
+  database_selector: 'job="openstack-database-exporter"'
+
+catalog:
+  refresh_interval: 60s
+
+api:
+  supported_granularities:
+    - "60s"
+    - "300s"
+    - "3600s"
+    - "W"
+  supported_aggregations:
+    - "mean"
+    - "min"
+    - "max"
+    - "sum"
+    - "last"
+    - "count"
+  default_granularity: "60s"
+  default_aggregation: "mean"

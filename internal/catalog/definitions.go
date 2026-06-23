@@ -1,0 +1,252 @@
+package catalog
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/yaguang-tang/gnocchi-proxy-api/internal/gnocchi"
+)
+
+type QueryMode string
+
+const (
+	QueryModeRangeFunction QueryMode = "range_function"
+	QueryModeLabelStatus   QueryMode = "label_status"
+	QueryModePresenceCount QueryMode = "presence_count"
+)
+
+type MetricDefinition struct {
+	ResourceType string
+	Name         string
+	Unit         string
+	Mode         QueryMode
+	StatusMap    map[string]float64
+	SelectorKey  string
+	ValueQuery   func(id string, selectors Selectors, aggregation string, window string) string
+	RawQuery     func(id string, selectors Selectors) string
+}
+
+type Selectors struct {
+	Libvirt  string
+	Database string
+}
+
+var metricDefinitions = map[string][]MetricDefinition{
+	"instance": {
+		buildInstanceMetric("cpu.time", "s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_cpu_time_seconds_total", id, selectors))
+		}),
+		buildInstanceMetric("vcpus", "count", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_vcpu_current", id, selectors))
+		}),
+		buildInstanceMetric("memory.usage", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_memory_usage_bytes", id, selectors))
+		}),
+		buildInstanceMetric("memory.maximum", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_maximum_memory_bytes", id, selectors))
+		}),
+		buildInstanceMetric("memory.available", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_available_bytes", id, selectors))
+		}),
+		buildInstanceMetric("memory.usable", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_usable_bytes", id, selectors))
+		}),
+		buildInstanceMetric("memory.rss", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_rss_bytes", id, selectors))
+		}),
+		buildInstanceMetric("memory.used_percent", "%", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_used_percent", id, selectors))
+		}),
+		buildInstanceMetric("disk.read.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors))
+		}),
+		buildInstanceMetric("disk.write.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors))
+		}),
+		buildInstanceMetric("disk.capacity", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_capacity_bytes", id, selectors))
+		}),
+		buildInstanceMetric("network.incoming.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_interface_stats_receive_bytes_total", id, selectors))
+		}),
+		buildInstanceMetric("network.outgoing.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_interface_stats_transmit_bytes_total", id, selectors))
+		}),
+		{
+			ResourceType: "instance",
+			Name:         "status",
+			Unit:         "state",
+			Mode:         QueryModeRangeFunction,
+			ValueQuery: func(id string, selectors Selectors, aggregation string, window string) string {
+				return rangeWrapped(aggregation, window, metricSelector("openstack_nova_server_status", selectors.Database, "id", id))
+			},
+		},
+		{
+			ResourceType: "instance",
+			Name:         "local_gb",
+			Unit:         "GB",
+			Mode:         QueryModeRangeFunction,
+			ValueQuery: func(id string, selectors Selectors, aggregation string, window string) string {
+				return rangeWrapped(aggregation, window, metricSelector("openstack_nova_server_local_gb", selectors.Database, "id", id))
+			},
+		},
+	},
+	"volume": {
+		{
+			ResourceType: "volume",
+			Name:         "volume.size",
+			Unit:         "GB",
+			Mode:         QueryModeRangeFunction,
+			ValueQuery: func(id string, selectors Selectors, aggregation string, window string) string {
+				return rangeWrapped(aggregation, window, metricSelector("openstack_cinder_volume_gb", selectors.Database, "id", id))
+			},
+		},
+		{
+			ResourceType: "volume",
+			Name:         "volume.status",
+			Unit:         "state",
+			Mode:         QueryModeRangeFunction,
+			ValueQuery: func(id string, selectors Selectors, aggregation string, window string) string {
+				return rangeWrapped(aggregation, window, metricSelector("openstack_cinder_volume_status", selectors.Database, "id", id))
+			},
+		},
+	},
+	"network": {
+		{
+			ResourceType: "network",
+			Name:         "network.present",
+			Unit:         "count",
+			Mode:         QueryModePresenceCount,
+			RawQuery: func(id string, selectors Selectors) string {
+				return metricSelector("openstack_neutron_network", selectors.Database, "id", id)
+			},
+		},
+		{
+			ResourceType: "network",
+			Name:         "network.status",
+			Unit:         "state",
+			Mode:         QueryModeLabelStatus,
+			StatusMap: map[string]float64{
+				"ACTIVE":  1,
+				"DOWN":    2,
+				"BUILD":   3,
+				"ERROR":   4,
+				"UNKNOWN": 0,
+			},
+			SelectorKey: "status",
+			RawQuery: func(id string, selectors Selectors) string {
+				return metricSelector("openstack_neutron_network", selectors.Database, "id", id)
+			},
+		},
+	},
+	"port": {
+		{
+			ResourceType: "port",
+			Name:         "port.present",
+			Unit:         "count",
+			Mode:         QueryModePresenceCount,
+			RawQuery: func(id string, selectors Selectors) string {
+				return metricSelector("openstack_neutron_port", selectors.Database, "uuid", id)
+			},
+		},
+		{
+			ResourceType: "port",
+			Name:         "port.status",
+			Unit:         "state",
+			Mode:         QueryModeLabelStatus,
+			StatusMap: map[string]float64{
+				"ACTIVE":  1,
+				"DOWN":    2,
+				"BUILD":   3,
+				"ERROR":   4,
+				"N/A":     0,
+				"UNKNOWN": 0,
+			},
+			SelectorKey: "status",
+			RawQuery: func(id string, selectors Selectors) string {
+				return metricSelector("openstack_neutron_port", selectors.Database, "uuid", id)
+			},
+		},
+	},
+}
+
+func Definitions(resourceType string) []MetricDefinition {
+	return append([]MetricDefinition(nil), metricDefinitions[resourceType]...)
+}
+
+func DefinitionByName(resourceType, metricName string) (MetricDefinition, bool) {
+	for _, definition := range metricDefinitions[resourceType] {
+		if definition.Name == metricName {
+			return definition, true
+		}
+	}
+	return MetricDefinition{}, false
+}
+
+func AllDefinitions() map[string][]MetricDefinition {
+	out := make(map[string][]MetricDefinition, len(metricDefinitions))
+	for key := range metricDefinitions {
+		out[key] = Definitions(key)
+	}
+	return out
+}
+
+func buildInstanceMetric(name, unit string, query func(id string, selectors Selectors, aggregation string, window string) string) MetricDefinition {
+	return MetricDefinition{
+		ResourceType: "instance",
+		Name:         name,
+		Unit:         unit,
+		Mode:         QueryModeRangeFunction,
+		ValueQuery:   query,
+	}
+}
+
+func rangeWrapped(aggregation, window, expr string) string {
+	function := map[string]string{
+		"mean":  "avg_over_time",
+		"min":   "min_over_time",
+		"max":   "max_over_time",
+		"sum":   "sum_over_time",
+		"last":  "last_over_time",
+		"count": "count_over_time",
+	}[strings.ToLower(aggregation)]
+	if function == "" {
+		function = "avg_over_time"
+	}
+	return fmt.Sprintf("%s((%s)[%s:%s])", function, expr, window, window)
+}
+
+func metricSelector(metric, selector, label, value string) string {
+	parts := make([]string, 0, 2)
+	if selector != "" {
+		parts = append(parts, strings.TrimSpace(selector))
+	}
+	if label != "" {
+		parts = append(parts, fmt.Sprintf(`%s=%q`, label, value))
+	}
+	return fmt.Sprintf("%s{%s}", metric, strings.Join(parts, ","))
+}
+
+func libvirtJoined(metric, instanceID string, selectors Selectors) string {
+	left := metricSelector(metric, selectors.Libvirt, "", "")
+	left = strings.Replace(left, `{}`, "", 1)
+	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
+	return fmt.Sprintf("sum((%s) * on(domain) group_left(instance_id) %s)", left, right)
+}
+
+func MetricForResource(resourceType string, resource *gnocchi.Resource, supportedAggregations []string) map[string]*gnocchi.Metric {
+	defs := Definitions(resourceType)
+	metrics := make(map[string]*gnocchi.Metric, len(defs))
+	for _, def := range defs {
+		metrics[def.Name] = &gnocchi.Metric{
+			ID:                 gnocchi.MetricID(resourceType, resource.ID, def.Name),
+			Name:               def.Name,
+			ArchivePolicyName:  "prometheus",
+			ResourceID:         resource.ID,
+			ResourceType:       resourceType,
+			Unit:               def.Unit,
+			AggregationMethods: append([]string(nil), supportedAggregations...),
+		}
+	}
+	return metrics
+}
