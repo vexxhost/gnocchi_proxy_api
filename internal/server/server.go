@@ -171,6 +171,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		},
 		"storage": map[string]any{
 			"summary": map[string]any{
+				"measures":  0,
 				"metrics":   len(snapshot.MetricsByID),
 				"resources": resourceCounts,
 			},
@@ -216,14 +217,19 @@ func (s *Server) syntheticArchivePolicy() gnocchi.ArchivePolicy {
 }
 
 func (s *Server) handleResourceTypes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, gnocchi.SupportedResourceTypes())
+	resourceTypes := gnocchi.SupportedResourceTypes()
+	response := make([]map[string]any, 0, len(resourceTypes))
+	for _, resourceType := range resourceTypes {
+		response = append(response, resourceTypeResponse(resourceType))
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleResourceType(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	for _, resourceType := range gnocchi.SupportedResourceTypes() {
 		if resourceType.Name == name {
-			writeJSON(w, http.StatusOK, resourceType)
+			writeJSON(w, http.StatusOK, resourceTypeResponse(resourceType))
 			return
 		}
 	}
@@ -322,7 +328,7 @@ func (s *Server) handleListMetrics(w http.ResponseWriter, r *http.Request) {
 	if nextMarker != "" {
 		w.Header().Set("Link", fmt.Sprintf(`<%s>; rel="next"`, nextPageURL(r, nextMarker)))
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, http.StatusOK, s.metricResponses(page))
 }
 
 func (s *Server) handleGetMetric(w http.ResponseWriter, r *http.Request) {
@@ -331,7 +337,7 @@ func (s *Server) handleGetMetric(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, metric)
+	writeJSON(w, http.StatusOK, s.metricResponse(metric))
 }
 
 func (s *Server) handleGetResourceMetric(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +346,7 @@ func (s *Server) handleGetResourceMetric(w http.ResponseWriter, r *http.Request)
 		s.writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, metric)
+	writeJSON(w, http.StatusOK, s.metricResponse(metric))
 }
 
 func (s *Server) handleMetricMeasures(w http.ResponseWriter, r *http.Request) {
@@ -615,6 +621,44 @@ func paginateMetrics(metrics []*gnocchi.Metric, marker string, limit int) ([]*gn
 		return metrics[start:], ""
 	}
 	return metrics[start : start+limit], metrics[start+limit-1].ID
+}
+
+func (s *Server) metricResponses(metrics []*gnocchi.Metric) []map[string]any {
+	response := make([]map[string]any, 0, len(metrics))
+	for _, metric := range metrics {
+		response = append(response, s.metricResponse(metric))
+	}
+	return response
+}
+
+func (s *Server) metricResponse(metric *gnocchi.Metric) map[string]any {
+	return map[string]any{
+		"id":                    metric.ID,
+		"name":                  metric.Name,
+		"archive_policy_name":   metric.ArchivePolicyName,
+		"archive_policy":        s.syntheticArchivePolicy(),
+		"resource_id":           metric.ResourceID,
+		"resource_type":         metric.ResourceType,
+		"unit":                  metric.Unit,
+		"aggregation_methods":   metric.AggregationMethods,
+		"created_by_user_id":    nil,
+		"created_by_project_id": nil,
+	}
+}
+
+func resourceTypeResponse(resourceType gnocchi.ResourceType) map[string]any {
+	attributes := make(map[string]map[string]any, len(resourceType.Attributes))
+	for _, attr := range resourceType.Attributes {
+		attributes[attr.Name] = map[string]any{
+			"required": attr.Required,
+			"type":     attr.Type,
+		}
+	}
+	return map[string]any{
+		"name":       resourceType.Name,
+		"attributes": attributes,
+		"state":      resourceType.State,
+	}
 }
 
 func applyResourceFilter(resources []*gnocchi.Resource, filter catalog.Predicate) []*gnocchi.Resource {

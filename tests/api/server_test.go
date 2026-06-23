@@ -52,6 +52,21 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	if len(resources) != 1 || resources[0]["display_name"] != "vm-a" {
 		t.Fatalf("unexpected search result: %#v", resources)
 	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource_type/instance", nil, "admin-token")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var resourceType map[string]any
+	decodeJSON(t, resp, &resourceType)
+	attributes, ok := resourceType["attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected resource type attributes map for gnocchiclient compatibility, got %#v", resourceType)
+	}
+	displayName, ok := attributes["display_name"].(map[string]any)
+	if !ok || displayName["type"] != "string" {
+		t.Fatalf("unexpected resource type attributes: %#v", attributes)
+	}
 }
 
 func TestAPIMetricLookupAndMeasures(t *testing.T) {
@@ -68,6 +83,19 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	if metric["name"] != "cpu.time" {
 		t.Fatalf("unexpected metric payload: %#v", metric)
 	}
+	archivePolicy, ok := metric["archive_policy"].(map[string]any)
+	if !ok || archivePolicy["name"] != "prometheus" {
+		t.Fatalf("expected nested archive_policy, got %#v", metric)
+	}
+	if _, ok := archivePolicy["definition"].([]any); !ok {
+		t.Fatalf("expected archive policy definition, got %#v", archivePolicy)
+	}
+	if _, exists := metric["created_by_user_id"]; !exists {
+		t.Fatalf("expected created_by_user_id key, got %#v", metric)
+	}
+	if _, exists := metric["created_by_project_id"]; !exists {
+		t.Fatalf("expected created_by_project_id key, got %#v", metric)
+	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util", nil, "user-token-a")
 	if resp.StatusCode != http.StatusOK {
@@ -76,6 +104,27 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	decodeJSON(t, resp, &metric)
 	if metric["name"] != "cpu_util" {
 		t.Fatalf("unexpected metric payload: %#v", metric)
+	}
+	archivePolicy, ok = metric["archive_policy"].(map[string]any)
+	if !ok || archivePolicy["name"] != "prometheus" {
+		t.Fatalf("expected nested archive_policy, got %#v", metric)
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/metric", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var metrics []map[string]any
+	decodeJSON(t, resp, &metrics)
+	if len(metrics) == 0 {
+		t.Fatalf("expected at least one metric")
+	}
+	archivePolicy, ok = metrics[0]["archive_policy"].(map[string]any)
+	if !ok || archivePolicy["name"] != "prometheus" {
+		t.Fatalf("expected metric list to include full archive_policy, got %#v", metrics[0])
+	}
+	if _, ok := archivePolicy["definition"].([]any); !ok {
+		t.Fatalf("expected metric list archive policy definition, got %#v", archivePolicy)
 	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu.time/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=max", nil, "user-token-a")
@@ -137,6 +186,24 @@ func TestAPIAggregatesAndUnsupportedEndpoints(t *testing.T) {
 	resp = env.do(t, http.MethodGet, "/v1/status", nil, "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for missing token, got %d", resp.StatusCode)
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/status", nil, "admin-token")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var status map[string]any
+	decodeJSON(t, resp, &status)
+	storage, ok := status["storage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected storage summary, got %#v", status)
+	}
+	summary, ok := storage["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected storage summary, got %#v", storage)
+	}
+	if _, ok := summary["measures"]; !ok {
+		t.Fatalf("expected measures count for gnocchiclient status compatibility, got %#v", summary)
 	}
 }
 
