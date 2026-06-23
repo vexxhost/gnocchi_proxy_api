@@ -151,7 +151,7 @@ helm upgrade --install gnocchi-proxy-api ./charts/gnocchi-proxy-api \
 
 ```bash
 kubectl get pods -n openstack -l app.kubernetes.io/name=gnocchi-proxy-api
-kubectl port-forward -n openstack svc/gnocchi-proxy-api-gnocchi-proxy-api 8080:8080
+kubectl port-forward -n openstack svc/gnocchi-proxy-api 8080:8080
 curl -s http://127.0.0.1:8080/healthz
 ```
 
