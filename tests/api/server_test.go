@@ -151,6 +151,9 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	if !env.prometheus.sawRangeQuery("rate(libvirt_domain_info_cpu_time_seconds_total") {
 		t.Fatalf("expected cpu_util query to use cpu time rate, got %v", env.prometheus.rangeQueries())
 	}
+	if !env.prometheus.sawRangeQuery("[120s]") {
+		t.Fatalf("expected cpu_util query to widen rate lookback for 60s granularity, got %v", env.prometheus.rangeQueries())
+	}
 	if !env.prometheus.sawRangeQuery("libvirt_domain_vcpu_current") {
 		t.Fatalf("expected cpu_util query to include vcpu capacity, got %v", env.prometheus.rangeQueries())
 	}
@@ -163,8 +166,14 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	if len(measures) != 2 {
 		t.Fatalf("expected two generic measures, got %d", len(measures))
 	}
-	if !env.prometheus.sawRangeQuery("libvirt_domain_info_memory_usage_bytes") {
-		t.Fatalf("expected generic measures lookup to resolve to instance metric definition, got %v", env.prometheus.rangeQueries())
+	if !env.prometheus.sawRangeQuery("libvirt_domain_memory_stats_available_bytes") {
+		t.Fatalf("expected memory.usage query to include available memory stats, got %v", env.prometheus.rangeQueries())
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_memory_stats_usable_bytes") {
+		t.Fatalf("expected memory.usage query to include usable memory stats, got %v", env.prometheus.rangeQueries())
+	}
+	if env.prometheus.sawRangeQuery("libvirt_domain_info_memory_usage_bytes") {
+		t.Fatalf("expected memory.usage query to stop using allocated memory, got %v", env.prometheus.rangeQueries())
 	}
 }
 

@@ -85,7 +85,7 @@ This table compares the proxy metric names above with the metric names OpenStack
 | `instance` | `cpu.time` | `cpu` | No | Same family, but the proxy renamed it. Add a `cpu` alias if we want stricter compatibility. |
 | `instance` | `cpu_util` | `cpu_util` | Yes | Legacy compatibility metric supported explicitly by the proxy. |
 | `instance` | `vcpus` | `vcpus` | Yes | Direct name match. |
-| `instance` | `memory.usage` | `memory.usage` | Yes | Direct name match. |
+| `instance` | `memory.usage` | `memory.usage` | Yes | Derived from guest memory stats (`available - usable`) so it reflects in-guest usage rather than the flavor allocation. |
 | `instance` | `memory.maximum` | `memory` (closest match) | No | Proxy-specific name today. Consider a `memory` alias only if callers expect the allocated-memory meter. |
 | `instance` | `memory.available` | `memory.available` | Yes | Direct name match. |
 | `instance` | `memory.usable` | none | Not applicable | Proxy-only metric from libvirt exporter data. |

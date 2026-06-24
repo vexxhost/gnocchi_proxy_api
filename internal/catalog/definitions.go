@@ -3,6 +3,7 @@ package catalog
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/yaguang-tang/gnocchi-proxy-api/internal/gnocchi"
 )
@@ -37,13 +38,13 @@ var metricDefinitions = map[string][]MetricDefinition{
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_cpu_time_seconds_total", id, selectors))
 		}),
 		buildInstanceMetric("cpu_util", "%", func(id string, selectors Selectors, aggregation string, window string) string {
-			return rangeWrapped(aggregation, window, cpuUtilExpr(id, selectors, window))
+			return rangeWrapped(aggregation, window, cpuUtilExpr(id, selectors, minRateLookback(window)))
 		}),
 		buildInstanceMetric("vcpus", "count", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_vcpu_current", id, selectors))
 		}),
 		buildInstanceMetric("memory.usage", "By", func(id string, selectors Selectors, aggregation string, window string) string {
-			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_memory_usage_bytes", id, selectors))
+			return rangeWrapped(aggregation, window, memoryUsageExpr(id, selectors))
 		}),
 		buildInstanceMetric("memory.maximum", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_maximum_memory_bytes", id, selectors))
@@ -248,6 +249,20 @@ func cpuUtilExpr(instanceID string, selectors Selectors, window string) string {
 	cpuTimeRate := libvirtRateJoined("libvirt_domain_info_cpu_time_seconds_total", instanceID, selectors, window)
 	vcpus := libvirtJoined("libvirt_domain_vcpu_current", instanceID, selectors)
 	return fmt.Sprintf("(100 * (%s)) / clamp_min((%s), 1)", cpuTimeRate, vcpus)
+}
+
+func memoryUsageExpr(instanceID string, selectors Selectors) string {
+	available := libvirtJoined("libvirt_domain_memory_stats_available_bytes", instanceID, selectors)
+	usable := libvirtJoined("libvirt_domain_memory_stats_usable_bytes", instanceID, selectors)
+	return fmt.Sprintf("clamp_min((%s) - (%s), 0)", available, usable)
+}
+
+func minRateLookback(window string) string {
+	duration, err := time.ParseDuration(window)
+	if err != nil || duration < 2*time.Minute {
+		return "120s"
+	}
+	return window
 }
 
 func MetricForResource(resourceType string, resource *gnocchi.Resource, supportedAggregations []string) map[string]*gnocchi.Metric {
