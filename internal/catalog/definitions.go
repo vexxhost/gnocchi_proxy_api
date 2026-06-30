@@ -37,6 +37,9 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetric("cpu.time", "s", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_cpu_time_seconds_total", id, selectors))
 		}),
+		buildInstanceMetricAlias("cpu", "s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_cpu_time_seconds_total", id, selectors))
+		}),
 		buildInstanceMetric("cpu_util", "%", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, cpuUtilExpr(id, selectors, minRateLookback(window)))
 		}),
@@ -49,6 +52,9 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetric("memory.maximum", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_maximum_memory_bytes", id, selectors))
 		}),
+		buildInstanceMetricAlias("memory", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_info_maximum_memory_bytes", id, selectors))
+		}),
 		buildInstanceMetric("memory.available", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_available_bytes", id, selectors))
 		}),
@@ -58,16 +64,28 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetric("memory.rss", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_rss_bytes", id, selectors))
 		}),
+		buildInstanceMetricAlias("memory.resident", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_rss_bytes", id, selectors))
+		}),
 		buildInstanceMetric("memory.used_percent", "%", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_memory_stats_used_percent", id, selectors))
 		}),
 		buildInstanceMetric("disk.read.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors))
 		}),
+		buildInstanceMetricAlias("disk.device.read.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors))
+		}),
 		buildInstanceMetric("disk.write.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors))
 		}),
+		buildInstanceMetricAlias("disk.device.write.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors))
+		}),
 		buildInstanceMetric("disk.capacity", "By", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_capacity_bytes", id, selectors))
+		}),
+		buildInstanceMetricAlias("disk.device.capacity", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_capacity_bytes", id, selectors))
 		}),
 		buildInstanceMetric("network.incoming.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
@@ -203,6 +221,10 @@ func buildInstanceMetric(name, unit string, query func(id string, selectors Sele
 		Mode:         QueryModeRangeFunction,
 		ValueQuery:   query,
 	}
+}
+
+func buildInstanceMetricAlias(name, unit string, query func(id string, selectors Selectors, aggregation string, window string) string) MetricDefinition {
+	return buildInstanceMetric(name, unit, query)
 }
 
 func rangeWrapped(aggregation, window, expr string) string {

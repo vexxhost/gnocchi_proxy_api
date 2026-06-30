@@ -97,6 +97,15 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 		t.Fatalf("expected created_by_project_id key, got %#v", metric)
 	}
 
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for cpu alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &metric)
+	if metric["name"] != "cpu" {
+		t.Fatalf("unexpected cpu alias payload: %#v", metric)
+	}
+
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util", nil, "user-token-a")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -119,6 +128,18 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	if len(metrics) == 0 {
 		t.Fatalf("expected at least one metric")
 	}
+	metricNames := map[string]bool{}
+	for _, item := range metrics {
+		name, ok := item["name"].(string)
+		if ok {
+			metricNames[name] = true
+		}
+	}
+	for _, expected := range []string{"cpu", "memory", "memory.resident", "disk.device.read.bytes", "disk.device.write.bytes", "disk.device.capacity"} {
+		if !metricNames[expected] {
+			t.Fatalf("expected metric list to include alias %q, got %#v", expected, metricNames)
+		}
+	}
 	archivePolicy, ok = metrics[0]["archive_policy"].(map[string]any)
 	if !ok || archivePolicy["name"] != "prometheus" {
 		t.Fatalf("expected metric list to include full archive_policy, got %#v", metrics[0])
@@ -138,6 +159,42 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	}
 	if !env.prometheus.sawRangeQuery("max_over_time") {
 		t.Fatalf("expected Prometheus range query to use max_over_time, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/memory/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for memory alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two memory alias measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_info_maximum_memory_bytes") {
+		t.Fatalf("expected memory alias query to use maximum memory series, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/memory.resident/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for memory.resident alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two memory.resident alias measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_memory_stats_rss_bytes") {
+		t.Fatalf("expected memory.resident alias query to use rss series, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/disk.device.read.bytes/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for disk.device.read.bytes alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two disk.device.read.bytes alias measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_block_stats_read_bytes_total") {
+		t.Fatalf("expected disk.device.read.bytes alias query to use read-bytes series, got %v", env.prometheus.rangeQueries())
 	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
