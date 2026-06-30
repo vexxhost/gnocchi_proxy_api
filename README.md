@@ -58,7 +58,7 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 | `POST /v1/search/resource/{type}` | Supported | Supports JSON filters and simple `filter=` expressions |
 | `GET /v1/metric`, `GET /v1/metric/{id}` | Supported | Synthetic read-only metric catalog |
 | `GET /v1/resource/{type}/{id}/metric/{name}` | Supported | Metric lookup by resource and name |
-| `GET /v1/metric/{id}/measures`, `GET /v1/resource/{type}/{id}/metric/{name}/measures` | Supported | `start`, `stop`, `granularity`, `aggregation`, `resample`, `refresh` |
+| `GET /v1/metric/{id}/measures`, `GET /v1/resource/{type}/{id}/metric/{name}/measures` | Supported | `start`, `stop`, `granularity`, `aggregation`, `resample`, `refresh`; bare numeric `granularity` and `resample` values are treated as seconds like Gnocchi |
 | `POST /v1/aggregates` | Supported | Read-only aggregate expressions over supported metrics |
 | `history=true` resource queries | Not supported | No revision/history store |
 | `POST/PATCH/DELETE /v1/resource*` | Not supported | Read-only facade |

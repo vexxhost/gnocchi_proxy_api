@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,8 +113,8 @@ func (s *Server) metricByResourceAndName(ctx context.Context, authCtx gnocchi.Co
 }
 
 func (s *Server) measureParamsFromRequest(r *http.Request) (measureParams, error) {
-	granularity := r.URL.Query().Get("granularity")
-	resample := r.URL.Query().Get("resample")
+	granularity := normalizeGranularity(r.URL.Query().Get("granularity"))
+	resample := normalizeGranularity(r.URL.Query().Get("resample"))
 	outputGranularity := s.cfg.API.DefaultGranularity
 	if resample != "" {
 		outputGranularity = resample
@@ -161,6 +162,20 @@ func (s *Server) measureParamsFromRequest(r *http.Request) (measureParams, error
 		OutputGranularity: outputGranularity,
 		Aggregation:       strings.ToLower(aggregation),
 	}, nil
+}
+
+func normalizeGranularity(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.ContainsAny(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		return value
+	}
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return value + "s"
+	}
+	return value
 }
 
 func promWindow(granularity string) string {
