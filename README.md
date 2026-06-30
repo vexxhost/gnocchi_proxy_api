@@ -54,10 +54,10 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 | `GET /`, `GET /v1/capabilities`, `GET /v1/status` | Supported | Discovery and synthetic status payloads |
 | `GET /v1/archive_policy`, `GET /v1/archive_policy/{name}` | Supported | Read-only synthetic `prometheus` archive policy |
 | `GET /v1/resource_type`, `GET /v1/resource_type/{name}` | Supported | `instance`, `volume`, `network`, `port`, `generic` |
-| `GET /v1/resource/{type}`, `GET /v1/resource/{type}/{id}` | Supported | Supports `limit`, `marker`, `sort`, `attrs` |
+| `GET /v1/resource/{type}`, `GET /v1/resource/{type}/{id}` | Supported | Supports `limit`, `marker`, `sort`, `attrs`; includes common Gnocchi resource fields such as `project_id`, `user_id`, `original_resource_id`, `started_at`, and revision timestamps |
 | `POST /v1/search/resource/{type}` | Supported | Supports JSON filters and simple `filter=` expressions |
 | `GET /v1/metric`, `GET /v1/metric/{id}` | Supported | Synthetic read-only metric catalog |
-| `GET /v1/resource/{type}/{id}/metric/{name}` | Supported | Metric lookup by resource and name |
+| `GET /v1/resource/{type}/{id}/metric`, `GET /v1/resource/{type}/{id}/metric/{name}` | Supported | Resource-scoped metric list and metric lookup by resource and name |
 | `GET /v1/metric/{id}/measures`, `GET /v1/resource/{type}/{id}/metric/{name}/measures` | Supported | `start`, `stop`, `granularity`, `aggregation`, `resample`, `refresh`; bare numeric `granularity` and `resample` values are treated as seconds like Gnocchi |
 | `POST /v1/aggregates` | Supported | Read-only aggregate expressions over supported metrics |
 | `history=true` resource queries | Not supported | No revision/history store |

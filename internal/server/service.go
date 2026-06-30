@@ -99,6 +99,20 @@ func (s *Server) metricByID(ctx context.Context, authCtx gnocchi.Context, metric
 	return &copyMetric, nil
 }
 
+func (s *Server) listMetricsByResource(ctx context.Context, authCtx gnocchi.Context, resourceType, resourceID string) ([]*gnocchi.Metric, error) {
+	resource, err := s.resourceByID(ctx, authCtx, resourceType, resourceID)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := make([]*gnocchi.Metric, 0, len(resource.Metrics))
+	for _, metric := range resource.Metrics {
+		copyMetric := *metric
+		metrics = append(metrics, &copyMetric)
+	}
+	return metrics, nil
+}
+
 func (s *Server) metricByResourceAndName(ctx context.Context, authCtx gnocchi.Context, resourceType, resourceID, metricName string) (*gnocchi.Metric, error) {
 	resource, err := s.resourceByID(ctx, authCtx, resourceType, resourceID)
 	if err != nil {

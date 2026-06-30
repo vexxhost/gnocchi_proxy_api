@@ -19,8 +19,9 @@ type Client struct {
 }
 
 type Sample struct {
-	Metric map[string]string
-	Value  float64
+	Metric    map[string]string
+	Timestamp time.Time
+	Value     float64
 }
 
 type SampleStream struct {
@@ -117,13 +118,14 @@ func (c *Client) Query(ctx context.Context, expr string, ts time.Time) ([]Sample
 
 	samples := make([]Sample, 0, len(data.Result))
 	for _, item := range data.Result {
-		value, err := parseSampleValue(item.Value)
+		timestamp, value, err := parsePoint(item.Value)
 		if err != nil {
 			return nil, err
 		}
 		samples = append(samples, Sample{
-			Metric: item.Metric,
-			Value:  value,
+			Metric:    item.Metric,
+			Timestamp: timestamp,
+			Value:     value,
 		})
 	}
 	return samples, nil
@@ -183,17 +185,6 @@ func (c *Client) QueryRange(ctx context.Context, expr string, start, end time.Ti
 		})
 	}
 	return streams, nil
-}
-
-func parseSampleValue(raw []any) (float64, error) {
-	if len(raw) != 2 {
-		return 0, fmt.Errorf("unexpected prometheus sample shape")
-	}
-	value, ok := raw[1].(string)
-	if !ok {
-		return 0, fmt.Errorf("unexpected prometheus sample value type")
-	}
-	return strconv.ParseFloat(value, 64)
 }
 
 func parsePoint(raw []any) (time.Time, float64, error) {

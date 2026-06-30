@@ -34,6 +34,13 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	if len(resources) != 1 {
 		t.Fatalf("expected one project-scoped instance, got %d", len(resources))
 	}
+	assertGnocchiResourceListFields(t, resources)
+	if resources[0]["original_resource_id"] != "instance-a" {
+		t.Fatalf("expected instance original_resource_id to match instance id, got %#v", resources[0]["original_resource_id"])
+	}
+	if resources[0]["user_id"] != "user-a" {
+		t.Fatalf("expected instance user_id to be present for gnocchiclient compatibility, got %#v", resources[0]["user_id"])
+	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance", nil, "admin-token")
 	if resp.StatusCode != http.StatusOK {
@@ -43,6 +50,17 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	if len(resources) != 2 {
 		t.Fatalf("expected admin to see two instances, got %d", len(resources))
 	}
+	assertGnocchiResourceListFields(t, resources)
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/generic", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for generic resource list, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &resources)
+	if len(resources) == 0 {
+		t.Fatalf("expected generic resource list to include project-scoped resources")
+	}
+	assertGnocchiResourceListFields(t, resources)
 
 	resp = env.do(t, http.MethodPost, "/v1/search/resource/instance", bytes.NewBufferString(`{"=":{"display_name":"vm-a"}}`), "user-token-a")
 	if resp.StatusCode != http.StatusOK {
@@ -146,6 +164,32 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	}
 	if _, ok := archivePolicy["definition"].([]any); !ok {
 		t.Fatalf("expected metric list archive policy definition, got %#v", archivePolicy)
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for resource metric list, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &metrics)
+	if len(metrics) == 0 {
+		t.Fatalf("expected resource metric list to include at least one metric")
+	}
+	for _, item := range metrics {
+		if item["resource_id"] != "instance-a" {
+			t.Fatalf("expected resource metric list to stay scoped to instance-a, got %#v", item)
+		}
+	}
+	resourceMetricNames := map[string]bool{}
+	for _, item := range metrics {
+		name, ok := item["name"].(string)
+		if ok {
+			resourceMetricNames[name] = true
+		}
+	}
+	for _, expected := range []string{"cpu", "cpu.time", "cpu_util", "memory", "memory.resident"} {
+		if !resourceMetricNames[expected] {
+			t.Fatalf("expected resource metric list to include %q, got %#v", expected, resourceMetricNames)
+		}
 	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu.time/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=max", nil, "user-token-a")
@@ -359,6 +403,30 @@ func decodeJSON[T any](t *testing.T, resp *http.Response, target *T) {
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
 		t.Fatalf("decode JSON: %v", err)
+	}
+}
+
+func assertGnocchiResourceListFields(t *testing.T, resources []map[string]any) {
+	t.Helper()
+
+	required := []string{
+		"id",
+		"type",
+		"project_id",
+		"user_id",
+		"original_resource_id",
+		"started_at",
+		"ended_at",
+		"revision_start",
+		"revision_end",
+		"metrics",
+	}
+	for _, resource := range resources {
+		for _, key := range required {
+			if _, ok := resource[key]; !ok {
+				t.Fatalf("expected resource list field %q for gnocchiclient compatibility, got %#v", key, resource)
+			}
+		}
 	}
 }
 

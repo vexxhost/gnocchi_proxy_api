@@ -96,6 +96,7 @@ func (s *Server) routes() http.Handler {
 		r.MethodFunc(http.MethodDelete, "/metric/{metricID}", unsupportedHandler("metric writes are not supported"))
 		r.MethodFunc(http.MethodPost, "/metric/{metricID}/measures", unsupportedHandler("measure ingestion is not supported"))
 
+		r.Get("/resource/{resourceType}/{resourceID}/metric", s.handleListResourceMetrics)
 		r.Get("/resource/{resourceType}/{resourceID}/metric/{metricName}", s.handleGetResourceMetric)
 		r.Get("/resource/{resourceType}/{resourceID}/metric/{metricName}/measures", s.handleResourceMetricMeasures)
 		r.MethodFunc(http.MethodPost, "/resource/{resourceType}/{resourceID}/metric/{metricName}/measures", unsupportedHandler("measure ingestion is not supported"))
@@ -338,6 +339,20 @@ func (s *Server) handleGetMetric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.metricResponse(metric))
+}
+
+func (s *Server) handleListResourceMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics, err := s.listMetricsByResource(r.Context(), authContext(r), chi.URLParam(r, "resourceType"), chi.URLParam(r, "resourceID"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	sort.Slice(metrics, func(i, j int) bool { return metrics[i].ID < metrics[j].ID })
+	page, nextMarker := paginateMetrics(metrics, r.URL.Query().Get("marker"), parseLimit(r))
+	if nextMarker != "" {
+		w.Header().Set("Link", fmt.Sprintf(`<%s>; rel="next"`, nextPageURL(r, nextMarker)))
+	}
+	writeJSON(w, http.StatusOK, s.metricResponses(page))
 }
 
 func (s *Server) handleGetResourceMetric(w http.ResponseWriter, r *http.Request) {

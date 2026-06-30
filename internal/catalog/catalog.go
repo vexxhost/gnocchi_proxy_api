@@ -144,15 +144,13 @@ func buildInstances(samples []prom.Sample, aggregations []string) []*gnocchi.Res
 		resource := &gnocchi.Resource{
 			ID:   id,
 			Type: "instance",
-			Attrs: map[string]any{
+			Attrs: mergeAttrs(commonResourceAttrs(id, sample.Timestamp, sample.Metric["tenant_id"], sample.Metric["user_id"]), map[string]any{
 				"display_name":      sample.Metric["name"],
-				"project_id":        sample.Metric["tenant_id"],
-				"user_id":           sample.Metric["user_id"],
 				"host":              sample.Metric["hypervisor_hostname"],
 				"flavor_id":         sample.Metric["flavor_id"],
 				"availability_zone": sample.Metric["availability_zone"],
 				"status":            sample.Metric["status"],
-			},
+			}),
 		}
 		resource.Metrics = MetricForResource("instance", resource, aggregations)
 		out = append(out, resource)
@@ -170,15 +168,13 @@ func buildVolumes(samples []prom.Sample, aggregations []string) []*gnocchi.Resou
 		resource := &gnocchi.Resource{
 			ID:   id,
 			Type: "volume",
-			Attrs: map[string]any{
+			Attrs: mergeAttrs(commonResourceAttrs(id, sample.Timestamp, sample.Metric["tenant_id"], sample.Metric["user_id"]), map[string]any{
 				"name":        sample.Metric["name"],
-				"project_id":  sample.Metric["tenant_id"],
-				"user_id":     sample.Metric["user_id"],
 				"status":      sample.Metric["status"],
 				"server_id":   sample.Metric["server_id"],
 				"volume_type": sample.Metric["volume_type"],
 				"bootable":    sample.Metric["bootable"],
-			},
+			}),
 		}
 		resource.Metrics = MetricForResource("volume", resource, aggregations)
 		out = append(out, resource)
@@ -196,9 +192,8 @@ func buildNetworks(samples []prom.Sample, aggregations []string) []*gnocchi.Reso
 		resource := &gnocchi.Resource{
 			ID:   id,
 			Type: "network",
-			Attrs: map[string]any{
+			Attrs: mergeAttrs(commonResourceAttrs(id, sample.Timestamp, sample.Metric["tenant_id"], nil), map[string]any{
 				"name":                      sample.Metric["name"],
-				"project_id":                sample.Metric["tenant_id"],
 				"status":                    sample.Metric["status"],
 				"is_external":               sample.Metric["is_external"],
 				"is_shared":                 sample.Metric["is_shared"],
@@ -207,7 +202,7 @@ func buildNetworks(samples []prom.Sample, aggregations []string) []*gnocchi.Reso
 				"provider_segmentation_id":  sample.Metric["provider_segmentation_id"],
 				"subnets":                   sample.Metric["subnets"],
 				"tags":                      sample.Metric["tags"],
-			},
+			}),
 		}
 		resource.Metrics = MetricForResource("network", resource, aggregations)
 		out = append(out, resource)
@@ -230,7 +225,7 @@ func buildPorts(samples []prom.Sample, networks []*gnocchi.Resource, aggregation
 		resource := &gnocchi.Resource{
 			ID:   id,
 			Type: "port",
-			Attrs: map[string]any{
+			Attrs: mergeAttrs(commonResourceAttrs(id, sample.Timestamp, networkProjects[sample.Metric["network_id"]], nil), map[string]any{
 				"project_id":       networkProjects[sample.Metric["network_id"]],
 				"network_id":       sample.Metric["network_id"],
 				"status":           sample.Metric["status"],
@@ -239,7 +234,7 @@ func buildPorts(samples []prom.Sample, networks []*gnocchi.Resource, aggregation
 				"mac_address":      sample.Metric["mac_address"],
 				"admin_state_up":   sample.Metric["admin_state_up"],
 				"binding_vif_type": sample.Metric["binding_vif_type"],
-			},
+			}),
 		}
 		resource.Metrics = MetricForResource("port", resource, aggregations)
 		out = append(out, resource)
@@ -255,10 +250,9 @@ func buildGeneric(resourcesByType map[string][]*gnocchi.Resource, aggregations [
 			generic := &gnocchi.Resource{
 				ID:   resource.ID,
 				Type: "generic",
-				Attrs: map[string]any{
+				Attrs: mergeAttrs(commonResourceAttrsFromExisting(resource), map[string]any{
 					"resource_type": resource.Type,
-					"project_id":    resource.Attrs["project_id"],
-				},
+				}),
 				Metrics: map[string]*gnocchi.Metric{},
 			}
 			for name, metric := range resource.Metrics {
@@ -269,4 +263,57 @@ func buildGeneric(resourcesByType map[string][]*gnocchi.Resource, aggregations [
 		}
 	}
 	return out
+}
+
+func commonResourceAttrs(id string, timestamp time.Time, projectID, userID any) map[string]any {
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	ts := timestamp.UTC().Format(time.RFC3339)
+	return map[string]any{
+		"project_id":           normalizeOptionalValue(projectID),
+		"user_id":              normalizeOptionalValue(userID),
+		"original_resource_id": id,
+		"started_at":           ts,
+		"ended_at":             nil,
+		"revision_start":       ts,
+		"revision_end":         nil,
+	}
+}
+
+func commonResourceAttrsFromExisting(resource *gnocchi.Resource) map[string]any {
+	return map[string]any{
+		"project_id":           normalizeOptionalValue(resource.Attrs["project_id"]),
+		"user_id":              normalizeOptionalValue(resource.Attrs["user_id"]),
+		"original_resource_id": resource.ID,
+		"started_at":           resource.Attrs["started_at"],
+		"ended_at":             resource.Attrs["ended_at"],
+		"revision_start":       resource.Attrs["revision_start"],
+		"revision_end":         resource.Attrs["revision_end"],
+	}
+}
+
+func mergeAttrs(base map[string]any, extras map[string]any) map[string]any {
+	merged := make(map[string]any, len(base)+len(extras))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extras {
+		merged[key] = value
+	}
+	return merged
+}
+
+func normalizeOptionalValue(value any) any {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return v
+	default:
+		return value
+	}
 }
