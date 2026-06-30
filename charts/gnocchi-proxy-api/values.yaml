@@ -47,7 +47,8 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-nodeSelector: {}
+nodeSelector:
+  openstack-control-plane: enabled
 tolerations: []
 affinity: {}
 
