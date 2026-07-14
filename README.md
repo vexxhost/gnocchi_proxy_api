@@ -41,6 +41,8 @@ Top-level sections:
 - `catalog`: in-memory catalog refresh interval
 - `api`: supported granularities and aggregation methods exposed to clients
 
+Measure response timestamps default to RFC 3339 UTC (for example, `2026-07-13T12:00:00Z`). A legacy caller that incorrectly appends `Z` before parsing can use `api.measure_timestamp_format: naive_utc`; it receives `2026-07-13T12:00:00`, which it can safely turn into UTC. Keep the default for normal Gnocchi-compatible clients.
+
 Run locally:
 
 ```bash

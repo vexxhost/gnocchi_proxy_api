@@ -413,12 +413,33 @@ func TestAPIAggregatesAndUnsupportedEndpoints(t *testing.T) {
 	}
 }
 
+func TestAPIMetricMeasuresSupportsLegacyNaiveUTCTimestamps(t *testing.T) {
+	t.Parallel()
+
+	env := newTestEnvironmentWithConfig(t, func(cfg *config.Config) {
+		cfg.API.MeasureTimestampFormat = "naive_utc"
+	})
+	resp := env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu.time/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var measures [][]any
+	decodeJSON(t, resp, &measures)
+	if got := measures[0][0]; got != "2024-01-01T00:00:00" {
+		t.Fatalf("expected legacy timezone-free timestamp, got %#v", got)
+	}
+}
+
 type testEnvironment struct {
 	handler    http.Handler
 	prometheus *fakePrometheus
 }
 
 func newTestEnvironment(t *testing.T) *testEnvironment {
+	return newTestEnvironmentWithConfig(t, nil)
+}
+
+func newTestEnvironmentWithConfig(t *testing.T, configure func(*config.Config)) *testEnvironment {
 	t.Helper()
 
 	prometheus := newFakePrometheus()
@@ -437,6 +458,9 @@ func newTestEnvironment(t *testing.T) *testEnvironment {
 	cfg.Keystone.ProjectName = "service"
 	cfg.Keystone.UserDomainName = "Default"
 	cfg.Keystone.ProjectDomainName = "Default"
+	if configure != nil {
+		configure(cfg)
+	}
 
 	logger := slog.New(slog.NewTextHandler(&discardWriter{}, nil))
 	promClient, err := prom.New(cfg.Prometheus.BaseURL, cfg.Prometheus.QueryTimeout, nil, false)

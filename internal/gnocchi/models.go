@@ -138,16 +138,27 @@ func (r *Resource) ToResponse(attrs []string) map[string]any {
 	return out
 }
 
-func MeasuresResponse(measures []Measure) [][]any {
+// MeasuresResponse returns Gnocchi measure triples. RFC 3339 is the
+// interoperable default. naive_utc exists only for legacy callers which append
+// a UTC designator themselves before parsing a timestamp.
+func MeasuresResponse(measures []Measure, timestampFormat string) [][]any {
 	out := make([][]any, 0, len(measures))
 	for _, measure := range measures {
 		out = append(out, []any{
-			measure.Timestamp.UTC().Format(time.RFC3339),
+			formatMeasureTimestamp(measure.Timestamp, timestampFormat),
 			granularityValue(measure.Granularity),
 			measure.Value,
 		})
 	}
 	return out
+}
+
+func formatMeasureTimestamp(timestamp time.Time, timestampFormat string) string {
+	timestamp = timestamp.UTC()
+	if timestampFormat == "naive_utc" {
+		return timestamp.Format("2006-01-02T15:04:05")
+	}
+	return timestamp.Format(time.RFC3339)
 }
 
 func granularityValue(value string) any {

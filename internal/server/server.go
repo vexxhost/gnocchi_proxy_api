@@ -375,7 +375,7 @@ func (s *Server) handleMetricMeasures(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(measures))
+	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(measures, s.cfg.API.MeasureTimestampFormat))
 }
 
 func (s *Server) handleResourceMetricMeasures(w http.ResponseWriter, r *http.Request) {
@@ -389,7 +389,7 @@ func (s *Server) handleResourceMetricMeasures(w http.ResponseWriter, r *http.Req
 		s.writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(measures))
+	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(measures, s.cfg.API.MeasureTimestampFormat))
 }
 
 func (s *Server) handleAggregates(w http.ResponseWriter, r *http.Request) {
@@ -448,7 +448,7 @@ func (s *Server) handleAggregates(w http.ResponseWriter, r *http.Request) {
 		gnocchi.WriteError(w, http.StatusBadRequest, "Bad Request", "aggregate operations must evaluate to a time series")
 		return
 	}
-	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(seriesToMeasures(value.Series, params.OutputGranularity)))
+	writeJSON(w, http.StatusOK, gnocchi.MeasuresResponse(seriesToMeasures(value.Series, params.OutputGranularity), s.cfg.API.MeasureTimestampFormat))
 }
 
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {

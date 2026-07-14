@@ -42,3 +42,6 @@ api:
     - "count"
   default_granularity: "60s"
   default_aggregation: "mean"
+  # Keep RFC 3339 for Gnocchi-compatible clients. Set to "naive_utc" only
+  # for a legacy client that appends "Z" before parsing each timestamp.
+  measure_timestamp_format: "rfc3339"

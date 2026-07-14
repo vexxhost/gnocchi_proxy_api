@@ -60,6 +60,7 @@ type APIConfig struct {
 	SupportedAggregations  []string `yaml:"supported_aggregations"`
 	DefaultGranularity     string   `yaml:"default_granularity"`
 	DefaultAggregation     string   `yaml:"default_aggregation"`
+	MeasureTimestampFormat string   `yaml:"measure_timestamp_format"`
 }
 
 func Load(path string) (*Config, error) {
@@ -105,6 +106,7 @@ func Default() *Config {
 			SupportedAggregations:  append([]string(nil), defaultAggregations...),
 			DefaultGranularity:     "60s",
 			DefaultAggregation:     "mean",
+			MeasureTimestampFormat: "rfc3339",
 		},
 	}
 }
@@ -141,6 +143,9 @@ func (c *Config) Validate() error {
 	}
 	if !slices.Contains(c.API.SupportedAggregations, c.API.DefaultAggregation) {
 		problems = append(problems, fmt.Errorf("api.default_aggregation %q is not in api.supported_aggregations", c.API.DefaultAggregation))
+	}
+	if c.API.MeasureTimestampFormat != "rfc3339" && c.API.MeasureTimestampFormat != "naive_utc" {
+		problems = append(problems, fmt.Errorf("api.measure_timestamp_format must be \"rfc3339\" or \"naive_utc\", got %q", c.API.MeasureTimestampFormat))
 	}
 
 	return errors.Join(problems...)

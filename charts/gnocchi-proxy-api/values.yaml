@@ -100,3 +100,4 @@ config:
       - "count"
     default_granularity: "60s"
     default_aggregation: "mean"
+    measure_timestamp_format: "rfc3339"
