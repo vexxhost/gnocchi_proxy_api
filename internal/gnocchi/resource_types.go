@@ -10,6 +10,14 @@ func SupportedResourceTypes() []ResourceType {
 			ResourceTypeField{Name: "flavor_id", Type: "string"},
 			ResourceTypeField{Name: "availability_zone", Type: "string"},
 		),
+		MustResourceType("instance_network_interface",
+			ResourceTypeField{Name: "instance_id", Required: true, Type: "uuid"},
+			ResourceTypeField{Name: "name", Required: true, Type: "string"},
+		),
+		MustResourceType("instance_disk",
+			ResourceTypeField{Name: "instance_id", Required: true, Type: "uuid"},
+			ResourceTypeField{Name: "name", Required: true, Type: "string"},
+		),
 		MustResourceType("volume",
 			ResourceTypeField{Name: "name", Type: "string"},
 			ResourceTypeField{Name: "project_id", Type: "string"},
@@ -40,4 +48,13 @@ func SupportedResourceTypes() []ResourceType {
 			ResourceTypeField{Name: "project_id", Type: "string"},
 		),
 	}
+}
+
+func SupportedResourceTypeNames() []string {
+	resourceTypes := SupportedResourceTypes()
+	names := make([]string, 0, len(resourceTypes))
+	for _, resourceType := range resourceTypes {
+		names = append(names, resourceType.Name)
+	}
+	return names
 }

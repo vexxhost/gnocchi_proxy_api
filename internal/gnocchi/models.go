@@ -10,7 +10,10 @@ import (
 	"github.com/google/uuid"
 )
 
-var metricNamespace = uuid.MustParse("1e27aead-d607-4e7d-a073-b4442c61f7f5")
+var (
+	metricNamespace   = uuid.MustParse("1e27aead-d607-4e7d-a073-b4442c61f7f5")
+	resourceNamespace = uuid.MustParse("6c808097-0543-4b0e-8818-76fa5a4d90f8")
+)
 
 type Context struct {
 	Token     string
@@ -70,6 +73,12 @@ type Measure struct {
 
 func MetricID(resourceType, resourceID, metricName string) string {
 	return uuid.NewSHA1(metricNamespace, []byte(resourceType+"/"+resourceID+"/"+metricName)).String()
+}
+
+// ResourceID returns a stable UUID for resource types whose original IDs are
+// composite values, such as a Nova instance ID plus a libvirt device name.
+func ResourceID(resourceType, originalResourceID string) string {
+	return uuid.NewSHA1(resourceNamespace, []byte(resourceType+"/"+originalResourceID)).String()
 }
 
 func (r *Resource) Clone() *Resource {

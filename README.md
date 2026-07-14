@@ -53,7 +53,7 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 | --- | --- | --- |
 | `GET /`, `GET /v1/capabilities`, `GET /v1/status` | Supported | Discovery and synthetic status payloads |
 | `GET /v1/archive_policy`, `GET /v1/archive_policy/{name}` | Supported | Read-only synthetic `prometheus` archive policy |
-| `GET /v1/resource_type`, `GET /v1/resource_type/{name}` | Supported | `instance`, `volume`, `network`, `port`, `generic` |
+| `GET /v1/resource_type`, `GET /v1/resource_type/{name}` | Supported | `instance`, `instance_network_interface`, `instance_disk`, `volume`, `network`, `port`, `generic` |
 | `GET /v1/resource/{type}`, `GET /v1/resource/{type}/{id}` | Supported | Supports `limit`, `marker`, `sort`, `attrs`; includes common Gnocchi resource fields such as `project_id`, `user_id`, `original_resource_id`, `started_at`, and revision timestamps |
 | `POST /v1/search/resource/{type}` | Supported | Supports JSON filters and simple `filter=` expressions |
 | `GET /v1/metric`, `GET /v1/metric/{id}` | Supported | Synthetic read-only metric catalog |
@@ -65,13 +65,15 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 | `POST/DELETE /v1/metric*`, `POST /v1/*/measures`, `POST /v1/batch/*` | Not supported | No ingestion or mutable catalog |
 | `POST /v1/search/metric` | Not supported | Out of scope in v1 |
 | `POST/PATCH/DELETE /v1/archive_policy*`, `GET/POST /v1/archive_policy_rule*` | Not supported | Synthetic archive policy only |
-| Resource types beyond `instance`, `volume`, `network`, `port`, `generic` | Not supported | No source coverage in v1 |
+| Resource types beyond `instance`, `instance_network_interface`, `instance_disk`, `volume`, `network`, `port`, `generic` | Not supported | No source coverage in v1 |
 
 ## Resource and Metric Coverage
 
 | Resource type | v1 metric families | Source |
 | --- | --- | --- |
 | `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), `disk.read.bytes`, `disk.write.bytes`, `disk.capacity` (`disk.device.*` aliases included), `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
+| `instance_network_interface` | Resource discovery only | libvirt interface counters joined with `libvirt_domain_openstack_info` |
+| `instance_disk` | Resource discovery only | libvirt block counters joined with `libvirt_domain_openstack_info` |
 | `volume` | `volume.size`, `volume.status` | Cinder volume collector |
 | `network` | `network.present`, `network.status` plus provider/shared/external attrs | Neutron network collector |
 | `port` | `port.present`, `port.status` plus `network_id`, `device_owner`, `fixed_ips`, `mac_address` attrs | Neutron port collector |
@@ -108,6 +110,26 @@ This table compares the proxy metric names above with the metric names OpenStack
 The closest-match names in this checklist are based on the OpenStack Ceilometer measurements reference: [Measurements](https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html).
 
 Both the proxy-native names and the Gnocchi-compatible aliases appear in `GET /v1/metric`. The `disk.device.*` aliases keep the familiar Gnocchi names, but today they still return one instance-scoped aggregate per VM rather than a true per-device breakdown.
+
+### Instance device resource searches
+
+The proxy supports Gnocchi's read-only device-resource searches. It derives each resource from the libvirt `domain` and `target_device` labels and associates it with the Nova UUID supplied by `libvirt_domain_openstack_info`. The resource's `original_resource_id` is `<instance-id>-<device>`; its returned `id` is a stable UUID.
+
+```http
+POST /v1/search/resource/instance_network_interface
+Content-Type: application/json
+
+{"=": {"instance_id": "<nova-instance-uuid>"}}
+```
+
+```http
+POST /v1/search/resource/instance_disk
+Content-Type: application/json
+
+{"=": {"instance_id": "<nova-instance-uuid>"}}
+```
+
+These endpoints only query the in-memory catalog. Resource creation, update, and deletion remain unsupported.
 
 ## Known Gaps
 
@@ -170,6 +192,8 @@ Copy [config.example.yaml](/Users/yaguang.tang/Documents/gnocchi-proxy-api/confi
 - `config.prometheus.database_selector`
 - `image.repository`
 - `image.tag`
+
+For Atmosphere deployments, the OpenStack metadata series typically come from the `openstack-exporter` ServiceMonitor, so `config.prometheus.database_selector` is usually `job="openstack-exporter"`.
 
 ### 5. Deploy with Helm
 

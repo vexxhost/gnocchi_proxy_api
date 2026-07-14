@@ -71,6 +71,24 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 		t.Fatalf("unexpected search result: %#v", resources)
 	}
 
+	resp = env.do(t, http.MethodPost, "/v1/search/resource/instance_network_interface", bytes.NewBufferString(`{"=":{"instance_id":"instance-a"}}`), "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance network interface search, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &resources)
+	if len(resources) != 1 || resources[0]["instance_id"] != "instance-a" || resources[0]["name"] != "tap0" {
+		t.Fatalf("unexpected instance network interface search result: %#v", resources)
+	}
+
+	resp = env.do(t, http.MethodPost, "/v1/search/resource/instance_disk", bytes.NewBufferString(`{"=":{"instance_id":"instance-a"}}`), "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance disk search, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &resources)
+	if len(resources) != 1 || resources[0]["instance_id"] != "instance-a" || resources[0]["name"] != "vda" {
+		t.Fatalf("unexpected instance disk search result: %#v", resources)
+	}
+
 	resp = env.do(t, http.MethodGet, "/v1/resource_type/instance", nil, "admin-token")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -499,6 +517,18 @@ func (f *fakePrometheus) writeInstant(w http.ResponseWriter, query string) {
 	case strings.Contains(query, "openstack_neutron_port"):
 		results = []result{
 			{Metric: map[string]string{"uuid": "port-a", "network_id": "network-a", "status": "ACTIVE", "device_owner": "compute:nova", "fixed_ips": "10.0.0.10", "mac_address": "fa:16:3e:00:00:01", "admin_state_up": "true", "binding_vif_type": "ovs"}, Value: []any{float64(1704067200), "1"}},
+		}
+	case strings.Contains(query, "libvirt_domain_openstack_info"):
+		results = []result{
+			{Metric: map[string]string{"domain": "instance-00000001", "instance_id": "instance-a", "project_id": "project-a", "user_id": "user-a"}, Value: []any{float64(1704067200), "1"}},
+		}
+	case strings.Contains(query, "libvirt_domain_interface_stats_receive_bytes_total"):
+		results = []result{
+			{Metric: map[string]string{"domain": "instance-00000001", "target_device": "tap0"}, Value: []any{float64(1704067200), "10"}},
+		}
+	case strings.Contains(query, "libvirt_domain_block_stats_read_bytes_total"):
+		results = []result{
+			{Metric: map[string]string{"domain": "instance-00000001", "target_device": "vda"}, Value: []any{float64(1704067200), "10"}},
 		}
 	}
 

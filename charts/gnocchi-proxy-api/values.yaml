@@ -82,7 +82,7 @@ config:
     query_timeout: 30s
     headers: {}
     libvirt_selector: 'job="monitoring/libvirt-exporter"'
-    database_selector: 'job="monitoring/openstack-database-exporter"'
+    database_selector: 'job="openstack-exporter"'
   catalog:
     refresh_interval: 60s
   api:

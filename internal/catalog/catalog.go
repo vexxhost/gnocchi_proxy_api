@@ -100,6 +100,18 @@ func (m *Manager) buildSnapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("query port catalog: %w", err)
 	}
+	openstackInfoSamples, err := m.client.Query(ctx, metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "", ""), time.Time{})
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("query libvirt OpenStack metadata: %w", err)
+	}
+	interfaceSamples, err := m.client.Query(ctx, metricSelector("libvirt_domain_interface_stats_receive_bytes_total", selectors.Libvirt, "", ""), time.Time{})
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("query instance network interface catalog: %w", err)
+	}
+	diskSamples, err := m.client.Query(ctx, metricSelector("libvirt_domain_block_stats_read_bytes_total", selectors.Libvirt, "", ""), time.Time{})
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("query instance disk catalog: %w", err)
+	}
 
 	resourcesByType := map[string][]*gnocchi.Resource{
 		"instance": buildInstances(instanceSamples, m.cfg.API.SupportedAggregations),
@@ -107,6 +119,10 @@ func (m *Manager) buildSnapshot(ctx context.Context) (Snapshot, error) {
 		"network":  buildNetworks(networkSamples, m.cfg.API.SupportedAggregations),
 	}
 	resourcesByType["port"] = buildPorts(portSamples, resourcesByType["network"], m.cfg.API.SupportedAggregations)
+	instanceDetails := instanceDetailsByID(resourcesByType["instance"])
+	openstackInfo := libvirtOpenStackInfoByDomain(openstackInfoSamples, instanceDetails)
+	resourcesByType["instance_network_interface"] = buildInstanceNetworkInterfaces(interfaceSamples, openstackInfo)
+	resourcesByType["instance_disk"] = buildInstanceDisks(diskSamples, openstackInfo)
 	resourcesByType["generic"] = buildGeneric(resourcesByType, m.cfg.API.SupportedAggregations)
 
 	snapshot := Snapshot{
@@ -242,8 +258,94 @@ func buildPorts(samples []prom.Sample, networks []*gnocchi.Resource, aggregation
 	return out
 }
 
+type instanceDetails struct {
+	projectID any
+	userID    any
+}
+
+type libvirtOpenStackInfo struct {
+	instanceID string
+	projectID  any
+	userID     any
+}
+
+func instanceDetailsByID(resources []*gnocchi.Resource) map[string]instanceDetails {
+	details := make(map[string]instanceDetails, len(resources))
+	for _, resource := range resources {
+		details[resource.ID] = instanceDetails{
+			projectID: resource.Attrs["project_id"],
+			userID:    resource.Attrs["user_id"],
+		}
+	}
+	return details
+}
+
+func libvirtOpenStackInfoByDomain(samples []prom.Sample, instanceDetailsByID map[string]instanceDetails) map[string]libvirtOpenStackInfo {
+	infoByDomain := make(map[string]libvirtOpenStackInfo, len(samples))
+	for _, sample := range samples {
+		domain := sample.Metric["domain"]
+		instanceID := sample.Metric["instance_id"]
+		if domain == "" || instanceID == "" {
+			continue
+		}
+		info := libvirtOpenStackInfo{
+			instanceID: instanceID,
+			projectID:  sample.Metric["project_id"],
+			userID:     sample.Metric["user_id"],
+		}
+		if details, ok := instanceDetailsByID[instanceID]; ok {
+			info.projectID = details.projectID
+			info.userID = details.userID
+		}
+		infoByDomain[domain] = info
+	}
+	return infoByDomain
+}
+
+func buildInstanceNetworkInterfaces(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
+	return buildInstanceDevices("instance_network_interface", samples, infoByDomain)
+}
+
+func buildInstanceDisks(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
+	return buildInstanceDevices("instance_disk", samples, infoByDomain)
+}
+
+func buildInstanceDevices(resourceType string, samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
+	resourcesByID := make(map[string]*gnocchi.Resource, len(samples))
+	for _, sample := range samples {
+		info, ok := infoByDomain[sample.Metric["domain"]]
+		if !ok {
+			continue
+		}
+		name := sample.Metric["target_device"]
+		if name == "" {
+			name = sample.Metric["device"]
+		}
+		if name == "" {
+			continue
+		}
+		originalResourceID := info.instanceID + "-" + name
+		resourceID := gnocchi.ResourceID(resourceType, originalResourceID)
+		resourcesByID[resourceID] = &gnocchi.Resource{
+			ID:   resourceID,
+			Type: resourceType,
+			Attrs: mergeAttrs(commonResourceAttrs(resourceID, sample.Timestamp, info.projectID, info.userID), map[string]any{
+				"original_resource_id": originalResourceID,
+				"instance_id":          info.instanceID,
+				"name":                 name,
+			}),
+			Metrics: map[string]*gnocchi.Metric{},
+		}
+	}
+	resources := make([]*gnocchi.Resource, 0, len(resourcesByID))
+	for _, resource := range resourcesByID {
+		resources = append(resources, resource)
+	}
+	return resources
+}
+
 func buildGeneric(resourcesByType map[string][]*gnocchi.Resource, aggregations []string) []*gnocchi.Resource {
-	order := []string{"instance", "volume", "network", "port"}
+	order := []string{"instance", "instance_network_interface", "instance_disk", "volume", "network", "port"}
 	out := []*gnocchi.Resource{}
 	for _, resourceType := range order {
 		for _, resource := range resourcesByType[resourceType] {

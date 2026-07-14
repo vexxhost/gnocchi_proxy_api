@@ -151,7 +151,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"aggregation_methods":   s.cfg.API.SupportedAggregations,
 		"archive_policy_name":   "prometheus",
-		"resource_types":        []string{"instance", "volume", "network", "port", "generic"},
+		"resource_types":        gnocchi.SupportedResourceTypeNames(),
 		"supported_granularity": s.cfg.API.SupportedGranularities,
 	})
 }

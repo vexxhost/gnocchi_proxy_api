@@ -16,3 +16,18 @@ func TestMetricIDIsDeterministic(t *testing.T) {
 		t.Fatalf("expected different resources to produce different metric IDs")
 	}
 }
+
+func TestResourceIDIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	first := ResourceID("instance_disk", "instance-a-vda")
+	second := ResourceID("instance_disk", "instance-a-vda")
+	third := ResourceID("instance_network_interface", "instance-a-vda")
+
+	if first != second {
+		t.Fatalf("expected deterministic resource ID, got %q and %q", first, second)
+	}
+	if first == third {
+		t.Fatalf("expected resource type to contribute to resource ID")
+	}
+}
