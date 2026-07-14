@@ -76,11 +76,47 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetricAlias("disk.device.read.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors))
 		}),
+		buildInstanceMetric("disk.read.bytes.rate", "B/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetricAlias("disk.device.read.bytes.rate", "B/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_read_bytes_total", id, selectors, minRateLookback(window)))
+		}),
 		buildInstanceMetric("disk.write.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors))
 		}),
 		buildInstanceMetricAlias("disk.device.write.bytes", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors))
+		}),
+		buildInstanceMetric("disk.write.bytes.rate", "B/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetricAlias("disk.device.write.bytes.rate", "B/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_write_bytes_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetric("disk.read.requests", "request", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_requests_total", id, selectors))
+		}),
+		buildInstanceMetricAlias("disk.device.read.requests", "request", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_read_requests_total", id, selectors))
+		}),
+		buildInstanceMetric("disk.read.requests.rate", "request/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_read_requests_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetricAlias("disk.device.read.requests.rate", "request/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_read_requests_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetric("disk.write.requests", "request", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_requests_total", id, selectors))
+		}),
+		buildInstanceMetricAlias("disk.device.write.requests", "request", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_write_requests_total", id, selectors))
+		}),
+		buildInstanceMetric("disk.write.requests.rate", "request/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_write_requests_total", id, selectors, minRateLookback(window)))
+		}),
+		buildInstanceMetricAlias("disk.device.write.requests.rate", "request/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_write_requests_total", id, selectors, minRateLookback(window)))
 		}),
 		buildInstanceMetric("disk.capacity", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_capacity_bytes", id, selectors))

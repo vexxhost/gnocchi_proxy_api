@@ -71,7 +71,7 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 
 | Resource type | v1 metric families | Source |
 | --- | --- | --- |
-| `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), `disk.read.bytes`, `disk.write.bytes`, `disk.capacity` (`disk.device.*` aliases included), `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
+| `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), disk read/write byte and request counters plus their rates (`disk.device.*` aliases included), `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
 | `instance_network_interface` | Resource discovery only | libvirt interface counters joined with `libvirt_domain_openstack_info` |
 | `instance_disk` | Resource discovery only | libvirt block counters joined with `libvirt_domain_openstack_info` |
 | `volume` | `volume.size`, `volume.status` | Cinder volume collector |
@@ -95,6 +95,12 @@ This table compares the proxy metric names above with the metric names OpenStack
 | `instance` | `memory.used_percent` | none | Not applicable | Proxy-only metric. |
 | `instance` | `disk.read.bytes` | `disk.device.read.bytes` | Yes | `disk.device.read.bytes` is a compatibility alias over the same instance-scoped aggregated read series. |
 | `instance` | `disk.write.bytes` | `disk.device.write.bytes` | Yes | `disk.device.write.bytes` is a compatibility alias over the same instance-scoped aggregated write series. |
+| `instance` | `disk.read.bytes.rate` | `disk.device.read.bytes.rate` | Yes | Read throughput in `B/s`, calculated from `libvirt_domain_block_stats_read_bytes_total`. |
+| `instance` | `disk.write.bytes.rate` | `disk.device.write.bytes.rate` | Yes | Write throughput in `B/s`, calculated from `libvirt_domain_block_stats_write_bytes_total`. |
+| `instance` | `disk.read.requests` | `disk.device.read.requests` | Yes | Cumulative read I/O requests from `libvirt_domain_block_stats_read_requests_total`. |
+| `instance` | `disk.write.requests` | `disk.device.write.requests` | Yes | Cumulative write I/O requests from `libvirt_domain_block_stats_write_requests_total`. |
+| `instance` | `disk.read.requests.rate` | `disk.device.read.requests.rate` | Yes | Read IOPS in `request/s`, calculated from the read-request counter. |
+| `instance` | `disk.write.requests.rate` | `disk.device.write.requests.rate` | Yes | Write IOPS in `request/s`, calculated from the write-request counter. |
 | `instance` | `disk.capacity` | `disk.device.capacity` | Yes | `disk.device.capacity` is a compatibility alias over the same instance-scoped aggregated capacity series. |
 | `instance` | `network.incoming.bytes` | `network.incoming.bytes` | Yes | Direct name match. |
 | `instance` | `network.outgoing.bytes` | `network.outgoing.bytes` | Yes | Direct name match. |
@@ -109,7 +115,32 @@ This table compares the proxy metric names above with the metric names OpenStack
 
 The closest-match names in this checklist are based on the OpenStack Ceilometer measurements reference: [Measurements](https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html).
 
-Both the proxy-native names and the Gnocchi-compatible aliases appear in `GET /v1/metric`. The `disk.device.*` aliases keep the familiar Gnocchi names, but today they still return one instance-scoped aggregate per VM rather than a true per-device breakdown.
+Both the proxy-native names and the Gnocchi-compatible aliases appear in `GET /v1/metric`. The `disk.device.*` aliases keep the familiar Gnocchi names, but today they return one instance-scoped aggregate per VM rather than a true per-device breakdown. Thus, for a VM with only its root disk attached, the throughput and IOPS values represent the root disk; with multiple disks attached, they are the sum across all attached disks.
+
+### Disk-throughput API URLs
+
+`DISK_THROUGHPUT` is an application-level category, not a Gnocchi metric name. A Gnocchi client resolves the standard metric ID from the instance resource and requests its measures using either of these supported URLs:
+
+```http
+GET /v1/resource/instance/<instance-uuid>
+X-Auth-Token: <token>
+```
+
+The resource response contains `metrics.disk.device.read.bytes.rate` and `metrics.disk.device.write.bytes.rate`. Use either returned metric UUID with:
+
+```http
+GET /v1/metric/<metric-uuid>/measures?start=<rfc3339>&stop=<rfc3339>&granularity=300&aggregation=mean
+X-Auth-Token: <token>
+```
+
+or use the name-based equivalent:
+
+```http
+GET /v1/resource/instance/<instance-uuid>/metric/disk.device.read.bytes.rate/measures?start=<rfc3339>&stop=<rfc3339>&granularity=300&aggregation=mean
+X-Auth-Token: <token>
+```
+
+The write-throughput URL substitutes `disk.device.write.bytes.rate`. For IOPS, use `disk.device.read.requests.rate` or `disk.device.write.requests.rate` in the same URL shape.
 
 ### Instance device resource searches
 

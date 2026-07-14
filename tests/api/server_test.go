@@ -155,6 +155,23 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 		t.Fatalf("expected nested archive_policy, got %#v", metric)
 	}
 
+	// This is the Gnocchi resource-to-metric-ID flow used by clients that
+	// first fetch an instance and then request measures by metric UUID.
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance resource lookup, got %d", resp.StatusCode)
+	}
+	var resource map[string]any
+	decodeJSON(t, resp, &resource)
+	resourceMetrics, ok := resource["metrics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected instance resource metrics mapping, got %#v", resource)
+	}
+	readThroughputMetricID, ok := resourceMetrics["disk.device.read.bytes.rate"].(string)
+	if !ok || readThroughputMetricID == "" {
+		t.Fatalf("expected disk.device.read.bytes.rate metric ID, got %#v", resourceMetrics)
+	}
+
 	resp = env.do(t, http.MethodGet, "/v1/metric", nil, "user-token-a")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -171,7 +188,20 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 			metricNames[name] = true
 		}
 	}
-	for _, expected := range []string{"cpu", "memory", "memory.resident", "disk.device.read.bytes", "disk.device.write.bytes", "disk.device.capacity"} {
+	for _, expected := range []string{
+		"cpu",
+		"memory",
+		"memory.resident",
+		"disk.device.read.bytes",
+		"disk.device.read.bytes.rate",
+		"disk.device.write.bytes",
+		"disk.device.write.bytes.rate",
+		"disk.device.read.requests",
+		"disk.device.read.requests.rate",
+		"disk.device.write.requests",
+		"disk.device.write.requests.rate",
+		"disk.device.capacity",
+	} {
 		if !metricNames[expected] {
 			t.Fatalf("expected metric list to include alias %q, got %#v", expected, metricNames)
 		}
@@ -257,6 +287,42 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 	}
 	if !env.prometheus.sawRangeQuery("libvirt_domain_block_stats_read_bytes_total") {
 		t.Fatalf("expected disk.device.read.bytes alias query to use read-bytes series, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/disk.device.read.bytes.rate/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for disk.device.read.bytes.rate alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two disk.device.read.bytes.rate alias measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("rate(libvirt_domain_block_stats_read_bytes_total") {
+		t.Fatalf("expected disk throughput query to use the read-bytes rate series, got %v", env.prometheus.rangeQueries())
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_block_stats_read_bytes_total[120s]") {
+		t.Fatalf("expected disk throughput query to use a safe rate lookback, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/metric/"+readThroughputMetricID+"/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected metric-ID measures URL to return 200 for disk throughput, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two disk throughput measures from the metric-ID URL, got %d", len(measures))
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/disk.device.write.requests.rate/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for disk.device.write.requests.rate alias, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two disk.device.write.requests.rate alias measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("rate(libvirt_domain_block_stats_write_requests_total") {
+		t.Fatalf("expected disk IOPS query to use the write-requests rate series, got %v", env.prometheus.rangeQueries())
 	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu_util/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
