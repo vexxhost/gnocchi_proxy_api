@@ -121,8 +121,8 @@ func (m *Manager) buildSnapshot(ctx context.Context) (Snapshot, error) {
 	resourcesByType["port"] = buildPorts(portSamples, resourcesByType["network"], m.cfg.API.SupportedAggregations)
 	instanceDetails := instanceDetailsByID(resourcesByType["instance"])
 	openstackInfo := libvirtOpenStackInfoByDomain(openstackInfoSamples, instanceDetails)
-	resourcesByType["instance_network_interface"] = buildInstanceNetworkInterfaces(interfaceSamples, openstackInfo)
-	resourcesByType["instance_disk"] = buildInstanceDisks(diskSamples, openstackInfo)
+	resourcesByType["instance_network_interface"] = buildInstanceNetworkInterfaces(interfaceSamples, openstackInfo, m.cfg.API.SupportedAggregations)
+	resourcesByType["instance_disk"] = buildInstanceDisks(diskSamples, openstackInfo, m.cfg.API.SupportedAggregations)
 	resourcesByType["generic"] = buildGeneric(resourcesByType, m.cfg.API.SupportedAggregations)
 
 	snapshot := Snapshot{
@@ -302,15 +302,15 @@ func libvirtOpenStackInfoByDomain(samples []prom.Sample, instanceDetailsByID map
 	return infoByDomain
 }
 
-func buildInstanceNetworkInterfaces(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
-	return buildInstanceDevices("instance_network_interface", samples, infoByDomain)
+func buildInstanceNetworkInterfaces(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo, aggregations []string) []*gnocchi.Resource {
+	return buildInstanceDevices("instance_network_interface", samples, infoByDomain, aggregations)
 }
 
-func buildInstanceDisks(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
-	return buildInstanceDevices("instance_disk", samples, infoByDomain)
+func buildInstanceDisks(samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo, aggregations []string) []*gnocchi.Resource {
+	return buildInstanceDevices("instance_disk", samples, infoByDomain, aggregations)
 }
 
-func buildInstanceDevices(resourceType string, samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo) []*gnocchi.Resource {
+func buildInstanceDevices(resourceType string, samples []prom.Sample, infoByDomain map[string]libvirtOpenStackInfo, aggregations []string) []*gnocchi.Resource {
 	resourcesByID := make(map[string]*gnocchi.Resource, len(samples))
 	for _, sample := range samples {
 		info, ok := infoByDomain[sample.Metric["domain"]]
@@ -326,7 +326,7 @@ func buildInstanceDevices(resourceType string, samples []prom.Sample, infoByDoma
 		}
 		originalResourceID := info.instanceID + "-" + name
 		resourceID := gnocchi.ResourceID(resourceType, originalResourceID)
-		resourcesByID[resourceID] = &gnocchi.Resource{
+		resource := &gnocchi.Resource{
 			ID:   resourceID,
 			Type: resourceType,
 			Attrs: mergeAttrs(commonResourceAttrs(resourceID, sample.Timestamp, info.projectID, info.userID), map[string]any{
@@ -334,8 +334,9 @@ func buildInstanceDevices(resourceType string, samples []prom.Sample, infoByDoma
 				"instance_id":          info.instanceID,
 				"name":                 name,
 			}),
-			Metrics: map[string]*gnocchi.Metric{},
 		}
+		resource.Metrics = MetricForResource(resourceType, resource, aggregations)
+		resourcesByID[resourceID] = resource
 	}
 	resources := make([]*gnocchi.Resource, 0, len(resourcesByID))
 	for _, resource := range resourcesByID {

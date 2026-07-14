@@ -241,11 +241,67 @@ func TestAPIMetricLookupAndMeasures(t *testing.T) {
 		}
 	}
 
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance_network_interface", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance network interface list, got %d", resp.StatusCode)
+	}
+	var interfaceResources []map[string]any
+	decodeJSON(t, resp, &interfaceResources)
+	if len(interfaceResources) != 1 {
+		t.Fatalf("expected one instance network interface, got %#v", interfaceResources)
+	}
+	interfaceID, ok := interfaceResources[0]["id"].(string)
+	if !ok || interfaceID == "" {
+		t.Fatalf("expected instance network interface ID, got %#v", interfaceResources[0])
+	}
+	interfaceMetrics, ok := interfaceResources[0]["metrics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected instance network interface metric mapping, got %#v", interfaceResources[0])
+	}
+	var measures [][]any
+	incomingMetricID, ok := interfaceMetrics["network.incoming.bytes"].(string)
+	if !ok || incomingMetricID == "" {
+		t.Fatalf("expected network.incoming.bytes metric ID, got %#v", interfaceMetrics)
+	}
+	for _, expected := range []string{
+		"network.incoming.bytes",
+		"network.incoming.bytes.rate",
+		"network.outgoing.bytes",
+		"network.outgoing.bytes.rate",
+	} {
+		if _, ok := interfaceMetrics[expected].(string); !ok {
+			t.Fatalf("expected instance network interface metric %q, got %#v", expected, interfaceMetrics)
+		}
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/metric/"+incomingMetricID+"/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance network interface metric-ID measures, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two instance network interface byte measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("libvirt_domain_interface_stats_receive_bytes_total") || !env.prometheus.sawRangeQuery(`target_device="tap0"`) {
+		t.Fatalf("expected NIC byte query to select the tap0 receive counter, got %v", env.prometheus.rangeQueries())
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/resource/instance_network_interface/"+interfaceID+"/metric/network.incoming.bytes.rate/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=mean", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance network interface throughput, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &measures)
+	if len(measures) != 2 {
+		t.Fatalf("expected two instance network interface throughput measures, got %d", len(measures))
+	}
+	if !env.prometheus.sawRangeQuery("rate(libvirt_domain_interface_stats_receive_bytes_total") || !env.prometheus.sawRangeQuery(`target_device="tap0"}[120s]`) {
+		t.Fatalf("expected NIC throughput query to use the receive counter rate with a safe lookback, got %v", env.prometheus.rangeQueries())
+	}
+
 	resp = env.do(t, http.MethodGet, "/v1/resource/instance/instance-a/metric/cpu.time/measures?start=2024-01-01T00:00:00Z&stop=2024-01-01T00:02:00Z&granularity=60s&aggregation=max", nil, "user-token-a")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var measures [][]any
 	decodeJSON(t, resp, &measures)
 	if len(measures) != 2 {
 		t.Fatalf("expected two measures, got %d", len(measures))

@@ -262,7 +262,23 @@ func (s *Server) queryMeasuresWithParams(ctx context.Context, resourceType, reso
 
 	switch definition.Mode {
 	case catalog.QueryModeRangeFunction:
-		expr := definition.ValueQuery(resourceID, selectors, aggregation, params.Window)
+		expr := ""
+		if definition.ResourceValueQuery != nil {
+			snapshot, err := s.catalog.Snapshot(ctx)
+			if err != nil {
+				return nil, err
+			}
+			resource, ok := snapshot.ResourceIndex[resourceType][resourceID]
+			if !ok {
+				return nil, fmt.Errorf("%w: resource %s", gnocchi.ErrNotFound, resourceID)
+			}
+			expr = definition.ResourceValueQuery(resource, selectors, aggregation, params.Window)
+		} else if definition.ValueQuery != nil {
+			expr = definition.ValueQuery(resourceID, selectors, aggregation, params.Window)
+		}
+		if expr == "" {
+			return nil, fmt.Errorf("invalid query definition for %s", metricName)
+		}
 		streams, err := s.prom.QueryRange(ctx, expr, params.Start, params.End, params.Step)
 		if err != nil {
 			return nil, err

@@ -74,7 +74,7 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 | Resource type | v1 metric families | Source |
 | --- | --- | --- |
 | `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), disk read/write byte and request counters plus their rates (`disk.device.*` aliases included), `disk.iops`, `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
-| `instance_network_interface` | Resource discovery only | libvirt interface counters joined with `libvirt_domain_openstack_info` |
+| `instance_network_interface` | `network.incoming.bytes`, `network.outgoing.bytes`, and their `B/s` rates | libvirt interface counters joined with `libvirt_domain_openstack_info` and scoped to the interface `target_device` |
 | `instance_disk` | Resource discovery only | libvirt block counters joined with `libvirt_domain_openstack_info` |
 | `volume` | `volume.size`, `volume.status` | Cinder volume collector |
 | `network` | `network.present`, `network.status` plus provider/shared/external attrs | Neutron network collector |
@@ -107,6 +107,10 @@ This table compares the proxy metric names above with the metric names OpenStack
 | `instance` | `disk.capacity` | `disk.device.capacity` | Yes | `disk.device.capacity` is a compatibility alias over the same instance-scoped aggregated capacity series. |
 | `instance` | `network.incoming.bytes` | `network.incoming.bytes` | Yes | Direct name match. |
 | `instance` | `network.outgoing.bytes` | `network.outgoing.bytes` | Yes | Direct name match. |
+| `instance_network_interface` | `network.incoming.bytes` | `network.incoming.bytes` | Yes | Per-interface cumulative receive bytes from `libvirt_domain_interface_stats_receive_bytes_total`. |
+| `instance_network_interface` | `network.incoming.bytes.rate` | none | Not applicable | Per-interface receive throughput in `B/s`, calculated from the receive-byte counter. |
+| `instance_network_interface` | `network.outgoing.bytes` | `network.outgoing.bytes` | Yes | Per-interface cumulative transmit bytes from `libvirt_domain_interface_stats_transmit_bytes_total`. |
+| `instance_network_interface` | `network.outgoing.bytes.rate` | none | Not applicable | Per-interface transmit throughput in `B/s`, calculated from the transmit-byte counter. |
 | `instance` | `status` | none | Not applicable | Proxy-only status metric from Nova state data. |
 | `instance` | `local_gb` | none | Not applicable | Proxy-only capacity metric from Nova state data. |
 | `volume` | `volume.size` | `volume.size` | Yes | Direct name match. |
@@ -171,6 +175,17 @@ Content-Type: application/json
 ```
 
 These endpoints only query the in-memory catalog. Resource creation, update, and deletion remain unsupported.
+
+### Instance NIC metric URLs
+
+Each `instance_network_interface` resource now includes the per-interface byte counters and throughput metrics. Discover the resource ID, then request the metric UUID returned in `metrics.network.incoming.bytes` (or use the name-based endpoint):
+
+```http
+GET /v1/resource/instance_network_interface/<resource-id>/metric/network.incoming.bytes.rate/measures?start=<rfc3339>&stop=<rfc3339>&granularity=300&aggregation=mean
+X-Auth-Token: <token>
+```
+
+Use `network.outgoing.bytes`, `network.incoming.bytes.rate`, or `network.outgoing.bytes.rate` for the corresponding counter or throughput series. The result is scoped to that resource's libvirt `target_device`; it is not the instance-wide total.
 
 ## Known Gaps
 

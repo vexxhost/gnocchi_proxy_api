@@ -24,7 +24,11 @@ type MetricDefinition struct {
 	StatusMap    map[string]float64
 	SelectorKey  string
 	ValueQuery   func(id string, selectors Selectors, aggregation string, window string) string
-	RawQuery     func(id string, selectors Selectors) string
+	// ResourceValueQuery is used when a metric needs attributes from the
+	// resource, rather than only its ID. Device resources have synthetic UUIDs,
+	// so their PromQL needs the instance ID and libvirt device name instead.
+	ResourceValueQuery func(resource *gnocchi.Resource, selectors Selectors, aggregation string, window string) string
+	RawQuery           func(id string, selectors Selectors) string
 }
 
 type Selectors struct {
@@ -152,6 +156,20 @@ var metricDefinitions = map[string][]MetricDefinition{
 			},
 		},
 	},
+	"instance_network_interface": {
+		buildInstanceNetworkInterfaceMetric("network.incoming.bytes", "By", func(instanceID, targetDevice string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtDeviceJoined("libvirt_domain_interface_stats_receive_bytes_total", instanceID, targetDevice, selectors))
+		}),
+		buildInstanceNetworkInterfaceMetric("network.incoming.bytes.rate", "B/s", func(instanceID, targetDevice string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtDeviceRateJoined("libvirt_domain_interface_stats_receive_bytes_total", instanceID, targetDevice, selectors, minRateLookback(window)))
+		}),
+		buildInstanceNetworkInterfaceMetric("network.outgoing.bytes", "By", func(instanceID, targetDevice string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtDeviceJoined("libvirt_domain_interface_stats_transmit_bytes_total", instanceID, targetDevice, selectors))
+		}),
+		buildInstanceNetworkInterfaceMetric("network.outgoing.bytes.rate", "B/s", func(instanceID, targetDevice string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, libvirtDeviceRateJoined("libvirt_domain_interface_stats_transmit_bytes_total", instanceID, targetDevice, selectors, minRateLookback(window)))
+		}),
+	},
 	"volume": {
 		{
 			ResourceType: "volume",
@@ -266,6 +284,23 @@ func buildInstanceMetricAlias(name, unit string, query func(id string, selectors
 	return buildInstanceMetric(name, unit, query)
 }
 
+func buildInstanceNetworkInterfaceMetric(name, unit string, query func(instanceID, targetDevice string, selectors Selectors, aggregation string, window string) string) MetricDefinition {
+	return MetricDefinition{
+		ResourceType: "instance_network_interface",
+		Name:         name,
+		Unit:         unit,
+		Mode:         QueryModeRangeFunction,
+		ResourceValueQuery: func(resource *gnocchi.Resource, selectors Selectors, aggregation string, window string) string {
+			instanceID, _ := resource.Attrs["instance_id"].(string)
+			targetDevice, _ := resource.Attrs["name"].(string)
+			if instanceID == "" || targetDevice == "" {
+				return ""
+			}
+			return query(instanceID, targetDevice, selectors, aggregation, window)
+		},
+	}
+}
+
 func rangeWrapped(aggregation, window, expr string) string {
 	function := map[string]string{
 		"mean":  "avg_over_time",
@@ -302,6 +337,18 @@ func libvirtJoined(metric, instanceID string, selectors Selectors) string {
 func libvirtRateJoined(metric, instanceID string, selectors Selectors, window string) string {
 	left := metricSelector(metric, selectors.Libvirt, "", "")
 	left = strings.Replace(left, `{}`, "", 1)
+	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
+	return fmt.Sprintf("sum((rate(%s[%s])) * on(domain) group_left(instance_id) %s)", left, window, right)
+}
+
+func libvirtDeviceJoined(metric, instanceID, targetDevice string, selectors Selectors) string {
+	left := metricSelector(metric, selectors.Libvirt, "target_device", targetDevice)
+	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
+	return fmt.Sprintf("sum((%s) * on(domain) group_left(instance_id) %s)", left, right)
+}
+
+func libvirtDeviceRateJoined(metric, instanceID, targetDevice string, selectors Selectors, window string) string {
+	left := metricSelector(metric, selectors.Libvirt, "target_device", targetDevice)
 	right := metricSelector("libvirt_domain_openstack_info", selectors.Libvirt, "instance_id", instanceID)
 	return fmt.Sprintf("sum((rate(%s[%s])) * on(domain) group_left(instance_id) %s)", left, window, right)
 }
