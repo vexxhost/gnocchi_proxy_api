@@ -73,7 +73,7 @@ go run ./cmd/gnocchi-proxy-api -config config.example.yaml
 
 | Resource type | v1 metric families | Source |
 | --- | --- | --- |
-| `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), disk read/write byte and request counters plus their rates (`disk.device.*` aliases included), `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
+| `instance` | `cpu.time` (`cpu` alias), `cpu_util`, `vcpus`, `memory.*` (`memory` and `memory.resident` aliases included), disk read/write byte and request counters plus their rates (`disk.device.*` aliases included), `disk.iops`, `disk.capacity`, `network.incoming.bytes`, `network.outgoing.bytes`, `status`, `local_gb` | libvirt exporter + Nova collector |
 | `instance_network_interface` | Resource discovery only | libvirt interface counters joined with `libvirt_domain_openstack_info` |
 | `instance_disk` | Resource discovery only | libvirt block counters joined with `libvirt_domain_openstack_info` |
 | `volume` | `volume.size`, `volume.status` | Cinder volume collector |
@@ -103,6 +103,7 @@ This table compares the proxy metric names above with the metric names OpenStack
 | `instance` | `disk.write.requests` | `disk.device.write.requests` | Yes | Cumulative write I/O requests from `libvirt_domain_block_stats_write_requests_total`. |
 | `instance` | `disk.read.requests.rate` | `disk.device.read.requests.rate` | Yes | Read IOPS in `request/s`, calculated from the read-request counter. |
 | `instance` | `disk.write.requests.rate` | `disk.device.write.requests.rate` | Yes | Write IOPS in `request/s`, calculated from the write-request counter. |
+| `instance` | `disk.iops` | `disk.iops` | Yes | Total VM IOPS in `count/s`, calculated as the sum of read and write request rates across all attached disks. |
 | `instance` | `disk.capacity` | `disk.device.capacity` | Yes | `disk.device.capacity` is a compatibility alias over the same instance-scoped aggregated capacity series. |
 | `instance` | `network.incoming.bytes` | `network.incoming.bytes` | Yes | Direct name match. |
 | `instance` | `network.outgoing.bytes` | `network.outgoing.bytes` | Yes | Direct name match. |
@@ -119,7 +120,7 @@ The closest-match names in this checklist are based on the OpenStack Ceilometer 
 
 Both the proxy-native names and the Gnocchi-compatible aliases appear in `GET /v1/metric`. The `disk.device.*` aliases keep the familiar Gnocchi names, but today they return one instance-scoped aggregate per VM rather than a true per-device breakdown. Thus, for a VM with only its root disk attached, the throughput and IOPS values represent the root disk; with multiple disks attached, they are the sum across all attached disks.
 
-### Disk-throughput API URLs
+### Disk-throughput and IOPS API URLs
 
 `DISK_THROUGHPUT` is an application-level category, not a Gnocchi metric name. A Gnocchi client resolves the standard metric ID from the instance resource and requests its measures using either of these supported URLs:
 
@@ -142,7 +143,14 @@ GET /v1/resource/instance/<instance-uuid>/metric/disk.device.read.bytes.rate/mea
 X-Auth-Token: <token>
 ```
 
-The write-throughput URL substitutes `disk.device.write.bytes.rate`. For IOPS, use `disk.device.read.requests.rate` or `disk.device.write.requests.rate` in the same URL shape.
+The write-throughput URL substitutes `disk.device.write.bytes.rate`. For split IOPS, use `disk.device.read.requests.rate` or `disk.device.write.requests.rate` in the same URL shape. For the Gnocchi-compatible total VM IOPS metric, use:
+
+```http
+GET /v1/resource/instance/<instance-uuid>/metric/disk.iops/measures?start=<rfc3339>&stop=<rfc3339>&granularity=300&aggregation=mean
+X-Auth-Token: <token>
+```
+
+`disk.iops` is backed by `libvirt_domain_block_stats_read_requests_total` and `libvirt_domain_block_stats_write_requests_total`; the proxy sums their rates across every disk attached to the instance. As with every supported metric, clients may instead use the metric UUID returned in `metrics.disk.iops` and request `GET /v1/metric/<metric-uuid>/measures`.
 
 ### Instance device resource searches
 

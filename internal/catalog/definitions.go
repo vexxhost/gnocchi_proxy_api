@@ -118,6 +118,9 @@ var metricDefinitions = map[string][]MetricDefinition{
 		buildInstanceMetricAlias("disk.device.write.requests.rate", "request/s", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtRateJoined("libvirt_domain_block_stats_write_requests_total", id, selectors, minRateLookback(window)))
 		}),
+		buildInstanceMetric("disk.iops", "count/s", func(id string, selectors Selectors, aggregation string, window string) string {
+			return rangeWrapped(aggregation, window, diskIOPSExpr(id, selectors, minRateLookback(window)))
+		}),
 		buildInstanceMetric("disk.capacity", "By", func(id string, selectors Selectors, aggregation string, window string) string {
 			return rangeWrapped(aggregation, window, libvirtJoined("libvirt_domain_block_stats_capacity_bytes", id, selectors))
 		}),
@@ -313,6 +316,15 @@ func memoryUsageExpr(instanceID string, selectors Selectors) string {
 	available := libvirtJoined("libvirt_domain_memory_stats_available_bytes", instanceID, selectors)
 	usable := libvirtJoined("libvirt_domain_memory_stats_usable_bytes", instanceID, selectors)
 	return fmt.Sprintf("clamp_min((%s) - (%s), 0)", available, usable)
+}
+
+// diskIOPSExpr is the Gnocchi-compatible instance-level disk.iops metric.
+// libvirt exposes cumulative read and write request counters, so the total
+// IOPS is the sum of their per-second rates across all disks on the instance.
+func diskIOPSExpr(instanceID string, selectors Selectors, window string) string {
+	reads := libvirtRateJoined("libvirt_domain_block_stats_read_requests_total", instanceID, selectors, window)
+	writes := libvirtRateJoined("libvirt_domain_block_stats_write_requests_total", instanceID, selectors, window)
+	return fmt.Sprintf("(%s) + (%s)", reads, writes)
 }
 
 func minRateLookback(window string) string {
