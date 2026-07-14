@@ -47,3 +47,24 @@ func TestParseFlatFilter(t *testing.T) {
 		t.Fatalf("expected predicate to match resource")
 	}
 }
+
+func TestParseFlatFilterWithoutWhitespaceAroundOperators(t *testing.T) {
+	t.Parallel()
+
+	predicate, err := ParseFlatFilter(`project_id="project-a" and memory>=24`)
+	if err != nil {
+		t.Fatalf("parse flat filter without whitespace: %v", err)
+	}
+
+	resource := &gnocchi.Resource{
+		ID:   "instance-a",
+		Type: "instance",
+		Attrs: map[string]any{
+			"project_id": "project-a",
+			"memory":     32,
+		},
+	}
+	if !predicate.Match(resource) {
+		t.Fatalf("expected predicate without whitespace to match resource")
+	}
+}

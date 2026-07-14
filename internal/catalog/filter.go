@@ -238,7 +238,7 @@ func tokenizeFilter(raw string) ([]filterToken, error) {
 			i = j + 1
 		default:
 			j := i
-			for j < len(raw) && !strings.ContainsRune(" ()\t\n", rune(raw[j])) {
+			for j < len(raw) && !strings.ContainsRune(" ()\t\n=<>!", rune(raw[j])) {
 				j++
 			}
 			word := raw[i:j]

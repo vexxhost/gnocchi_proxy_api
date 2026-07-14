@@ -112,28 +112,26 @@ func (r *Resource) ToResponse(attrs []string) map[string]any {
 		for _, key := range keys {
 			out[key] = r.Attrs[key]
 		}
-		if len(r.Metrics) > 0 {
-			metrics := make(map[string]string, len(r.Metrics))
-			for name, metric := range r.Metrics {
-				metrics[name] = metric.ID
-			}
-			out["metrics"] = metrics
-		}
+		out["metrics"] = metricIDs(r.Metrics)
 		return out
 	}
 
 	for _, attr := range attrs {
 		if attr == "metrics" {
-			metrics := make(map[string]string, len(r.Metrics))
-			for name, metric := range r.Metrics {
-				metrics[name] = metric.ID
-			}
-			out["metrics"] = metrics
+			out["metrics"] = metricIDs(r.Metrics)
 			continue
 		}
 		if value, ok := r.Attrs[attr]; ok {
 			out[attr] = value
 		}
+	}
+	return out
+}
+
+func metricIDs(metrics map[string]*Metric) map[string]string {
+	out := make(map[string]string, len(metrics))
+	for name, metric := range metrics {
+		out[name] = metric.ID
 	}
 	return out
 }

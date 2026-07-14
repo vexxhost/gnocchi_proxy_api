@@ -79,6 +79,17 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	if len(resources) != 1 || resources[0]["instance_id"] != "instance-a" || resources[0]["name"] != "tap0" {
 		t.Fatalf("unexpected instance network interface search result: %#v", resources)
 	}
+	assertGnocchiResourceListFields(t, resources)
+
+	resp = env.do(t, http.MethodPost, "/v1/search/resource/instance_network_interface?filter=instance_id%3Dinstance-a", nil, "user-token-a")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for instance network interface flat-filter search, got %d", resp.StatusCode)
+	}
+	decodeJSON(t, resp, &resources)
+	if len(resources) != 1 || resources[0]["instance_id"] != "instance-a" || resources[0]["name"] != "tap0" {
+		t.Fatalf("unexpected instance network interface flat-filter search result: %#v", resources)
+	}
+	assertGnocchiResourceListFields(t, resources)
 
 	resp = env.do(t, http.MethodPost, "/v1/search/resource/instance_disk", bytes.NewBufferString(`{"=":{"instance_id":"instance-a"}}`), "user-token-a")
 	if resp.StatusCode != http.StatusOK {
@@ -87,6 +98,14 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	decodeJSON(t, resp, &resources)
 	if len(resources) != 1 || resources[0]["instance_id"] != "instance-a" || resources[0]["name"] != "vda" {
 		t.Fatalf("unexpected instance disk search result: %#v", resources)
+	}
+	assertGnocchiResourceListFields(t, resources)
+	diskMetrics, ok := resources[0]["metrics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected instance disk search result to include metrics map, got %#v", resources[0])
+	}
+	if len(diskMetrics) != 0 {
+		t.Fatalf("expected instance disk metrics map to be empty, got %#v", diskMetrics)
 	}
 
 	resp = env.do(t, http.MethodGet, "/v1/resource_type/instance", nil, "admin-token")
@@ -102,6 +121,11 @@ func TestAPIResourceScopingAndSearch(t *testing.T) {
 	displayName, ok := attributes["display_name"].(map[string]any)
 	if !ok || displayName["type"] != "string" {
 		t.Fatalf("unexpected resource type attributes: %#v", attributes)
+	}
+
+	resp = env.do(t, http.MethodGet, "/v1/capabilities/", nil, "admin-token")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for trailing-slash capabilities route, got %d", resp.StatusCode)
 	}
 }
 

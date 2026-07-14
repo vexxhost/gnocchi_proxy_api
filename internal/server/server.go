@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/yaguang-tang/gnocchi-proxy-api/internal/catalog"
@@ -60,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) routes() http.Handler {
 	router := chi.NewRouter()
 	router.Use(s.loggingMiddleware)
+	router.Use(middleware.StripSlashes)
 
 	router.Get("/", s.handleRoot)
 	router.Get("/healthz", s.handleHealth)
